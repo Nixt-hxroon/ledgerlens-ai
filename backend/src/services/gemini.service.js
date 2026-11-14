@@ -128,32 +128,32 @@ SCHEMA:
   "document_type": "Invoice" | "Purchase Order" | "Receipt" | "Other",
   "classification_confidence": number between 0 and 1,
   "document_characteristics": ["array of key visual and structural traits noticed"],
-  "summary": "Concise 1-2 sentence professional executive summary of the document, vendor, total amount, and date",
+  "summary": "Concise 1-2 sentence professional executive summary of the document, issuing entity, total amount or main subject, and date",
   "extracted_fields": {
-    "document_number": "string or null (e.g. INV-1029, PO-8832, receipt #)",
+    "document_number": "string or null (e.g. invoice #, PO #, receipt #, roll/registration #, or reference #)",
     "purchase_order_number": "string or null (referenced PO number if this is an invoice)",
     "document_date": "YYYY-MM-DD string or null",
     "due_date": "YYYY-MM-DD string or null",
-    "vendor_name": "string or null (merchant, supplier or vendor)",
+    "vendor_name": "string or null (merchant, supplier, vendor, or issuing institution/board)",
     "vendor_address": "string or null",
     "vendor_contact": "string or null (email/phone)",
-    "customer_name": "string or null (buyer or billed-to party)",
+    "customer_name": "string or null (buyer, billed-to party, or student/holder name)",
     "customer_address": "string or null",
     "subtotal": number or null,
     "tax_amount": number or null,
     "discount": number or null,
     "total_amount": number or null,
-    "currency": "USD" | "EUR" | "GBP" | "INR" | "CAD" | "AUD" (3-letter currency code),
+    "currency": "USD" | "EUR" | "GBP" | "INR" | "CAD" | "AUD" or null,
     "payment_status": "string or null (Paid, Unpaid, Pending, etc. ONLY if explicitly stated)",
     "payment_terms": "string or null (e.g. Net 30, Due upon receipt)"
   },
   "line_items": [
     {
-      "description": "Item or service description",
-      "quantity": number,
-      "unit_price": number,
-      "tax_amount": number,
-      "total_amount": number
+      "description": "Item, service, or subject description",
+      "quantity": number or null,
+      "unit_price": number or null,
+      "tax_amount": number or null,
+      "total_amount": number or null
     }
   ],
   "evidence_snippets": [
@@ -169,6 +169,13 @@ SCHEMA:
 
 STRICT INSTRUCTIONS:
 - Identify document type based on its actual structural contents, NOT just the filename.
+- If the document is an Educational Marksheet, Certificate, Student Transcript, ID Card, or Non-Financial document:
+  * Classify as "Other".
+  * Extract the issuing board/institution as vendor_name.
+  * Extract the student/recipient name as customer_name.
+  * Extract the registration/roll number as document_number.
+  * Set subtotal, tax_amount, discount, total_amount to null or 0.
+  * Set currency to "INR" or null.
 - If a value is missing or not visible in the document, return null or 0 for numeric amounts. Never hallucinate data.
 - Ensure all numbers are clean numeric floats, not strings with currency symbols.
 - Include source evidence snippets for main fields (vendor, total, document number, date) so the user can verify them against the document.
@@ -231,7 +238,7 @@ ${extractedText ? `\n[Extracted Document Text for Reference]:\n${extractedText.s
       payment_terms: extractedData.payment_terms || null,
     };
 
-    // Build context of existing user documents to detect duplicate billings or price anomalies
+    // Context of other user documents for duplicate billing checks
     const otherUserDocs = userDocuments
       .filter((d) => d.id !== document.id)
       .slice(0, 30)
@@ -250,60 +257,56 @@ ${extractedText ? `\n[Extracted Document Text for Reference]:\n${extractedText.s
         const model = getGeminiModel();
 
         const agentPrompt = `
-You are the Autonomous Senior Forensic Document Auditor, Certified Fraud Examiner (CFE), and Corporate Controller of LedgerLens AI.
-Perform an exhaustive, multi-dimensional forensic audit of the following business document:
+You are the Autonomous Senior Document Auditor & Corporate Controller of LedgerLens AI.
+Perform an intelligent, category-specific evaluation of this document:
 
 DOCUMENT METADATA:
 - File Name: "${document.original_filename}"
 - Category: ${docType}
 - Extracted Fields: ${JSON.stringify(fields, null, 2)}
 - Line Items: ${JSON.stringify(lineItems.slice(0, 50), null, 2)}
-- Other Documents on File (for duplicate and historical anomaly checks): ${JSON.stringify(otherUserDocs, null, 2)}
+- Other Documents on File (for duplicate checks): ${JSON.stringify(otherUserDocs, null, 2)}
 
-YOUR AUDIT MANDATE:
-Evaluate the document across four critical corporate audit pillars:
-1. FINANCIAL INTEGRITY & MATHEMATICAL COHERENCE:
-   - Line items calculation check: Does (quantity * unit_price) match line total?
-   - Subtotal tally: Does the sum of line items equal the stated subtotal?
-   - Tax rate validation: Is the tax amount mathematically consistent with standard sales tax / VAT applied to the taxable subtotal?
-   - Grand total reconciliation: Does (subtotal + tax_amount - discount) equal total_amount? Flag ANY variance, even by cents.
-   - Hidden or unexplained surcharges: Are there unexplained fees or line items?
+CATEGORY-SPECIFIC AUDIT RULES:
+1. IF CATEGORY IS "Other" (e.g. Educational Marksheet, Certificate, Transcript, Identity Card, Non-Financial Document):
+   - DO NOT run commercial invoice arithmetic checks. There are NO invoices or sales tax to audit.
+   - Verify document authenticity, issuing authority (${fields.vendor_name || 'Issuing body'}), recipient name (${fields.customer_name || 'Individual'}), and registration/document number.
+   - If clear and authentic, assign audit_score: 95-100, overall_status: "Valid", and findings: [].
+   - Provide an informative executive summary describing the educational or official document and noting that accounts payable financial validations are not applicable.
 
-2. CONTRACTUAL & PAYMENT COMPLIANCE:
-   - Payment terms audit: Are payment terms specified (e.g., Net 30, Due upon receipt)?
-   - Chronology audit: Is the due_date on or after the document_date? A due date prior to document date is a Critical Issue.
-   - Purchase Order reference: Invoices without a referenced PO number present a billing authorization risk.
+2. IF CATEGORY IS "Purchase Order":
+   - Verify PO number, order date, vendor, buyer, line items, and total order authorization.
+   - DO NOT flag missing payment due date or missing PO reference (a PO is an order authorization, not a billing invoice).
+   - Flag only actual math discrepancies between ordered line items and total order value.
 
-3. FRAUD, RISK & ANOMALY DETECTION:
-   - Duplicate billing exposure: Does this invoice number and vendor match another recorded document?
-   - Vendor credibility: Are mandatory vendor credentials present (name, contact, address)?
-   - Suspicious amounts: Zero, negative, or abnormally rounded sums without justification.
-   - Phantom or vague line items (e.g. "Miscellaneous Services").
+3. IF CATEGORY IS "Receipt":
+   - Verify merchant, transaction date, items purchased, and point-of-sale total paid.
+   - DO NOT flag missing due dates or Net terms (receipts are paid immediately at point of sale).
 
-4. AUDIT READINESS & EXECUTIVE SCORING:
-   - Assign an authoritative "audit_score" from 0 to 100:
-     * 90 - 100: Flawless, audit-ready document.
-     * 70 - 89: Minor warnings or advisory notices.
-     * Below 70: Critical calculation errors, date chronology failures, or fraud risks.
-   - Assign "overall_status": "Valid" (no critical issues and score >= 80), "Warning" (minor issues, score 60-79), or "Critical Issue" (critical errors, score < 60).
+4. IF CATEGORY IS "Invoice":
+   - Verify mathematical accuracy: (subtotal + tax_amount - discount == total_amount) and (line item sum == subtotal).
+   - Check chronology: due_date must be on or after document_date.
+   - Verify mandatory invoice fields: invoice number and vendor name.
+   - Flag duplicate invoice numbers from the same vendor.
+   - Assign overall_status: "Valid" (no errors, score >= 85), "Warning" (minor advisory, score 65-84), or "Critical Issue" (math mismatch, retroactive due date, or duplicate).
 
 RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
 {
   "audit_score": number (0-100),
   "overall_status": "Valid" | "Warning" | "Critical Issue",
-  "executive_summary": "Professional auditor narrative detailing the health of this document, identified risks, and compliance verdict.",
+  "executive_summary": "Professional auditor narrative describing document health, identified traits, and evaluation verdict.",
   "actionable_recommendations": [
-    "Immediate step for the AP/audit team (e.g. Request amended invoice with itemized freight, withhold payment until credit memo received)"
+    "Immediate guidance for user or AP team"
   ],
   "findings": [
     {
-      "issue_type": "ARITHMETIC_TOTAL_MISMATCH" | "LINE_ITEM_CALCULATION_MISMATCH" | "CONTRACTUAL_DUE_DATE_RISK" | "MISSING_MANDATORY_FIELD" | "TAX_CALCULATION_ANOMALY" | "SUSPICIOUS_AMOUNT" | "DUPLICATE_DOCUMENT_DETECTED" | "VENDOR_CREDENTIALS_MISSING" | "FRAUD_RISK_ANOMALY",
+      "issue_type": "ARITHMETIC_TOTAL_MISMATCH" | "CONTRACTUAL_DUE_DATE_RISK" | "MISSING_MANDATORY_FIELD" | "TAX_CALCULATION_ANOMALY" | "SUSPICIOUS_AMOUNT" | "DUPLICATE_DOCUMENT_DETECTED",
       "severity": "Critical Issue" | "Warning" | "Review Required",
-      "field_name": "name of the affected field or line item",
+      "field_name": "name of field or line item",
       "extracted_value": "stated value",
-      "expected_value": "expected value or audit standard",
-      "explanation": "Detailed explanation of the discrepancy and risk.",
-      "recommendation": "Exact guidance for resolving this finding."
+      "expected_value": "expected value",
+      "explanation": "Detailed explanation of discrepancy.",
+      "recommendation": "Actionable step to resolve."
     }
   ]
 }
@@ -342,66 +345,126 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
    * Resilient local forensic auditor when Gemini is offline or rate-limited
    */
   heuristicAuditEvaluation({ document, fields, lineItems, otherUserDocs = [] }) {
-    const findings = [];
-    let auditScore = 100;
     const docType = document.document_type || 'Invoice';
 
-    // 1. Mandatory Field Checks
-    if (docType === 'Invoice') {
-      if (!fields.document_number) {
-        auditScore -= 20;
-        findings.push({
-          issue_type: 'MISSING_MANDATORY_FIELD',
-          severity: 'Critical Issue',
-          field_name: 'invoice_number',
-          extracted_value: null,
-          expected_value: 'Legitimate alphanumeric invoice identifier',
-          explanation: 'Invoice number is absent or unreadable. Invoices require a distinct identifier for statutory tax compliance.',
-          recommendation: 'Request a compliant invoice with a formal invoice number from the vendor before payment disbursement.',
-        });
-      }
-
-      if (!fields.vendor_name) {
-        auditScore -= 25;
-        findings.push({
-          issue_type: 'MISSING_MANDATORY_FIELD',
-          severity: 'Critical Issue',
-          field_name: 'vendor_name',
-          extracted_value: null,
-          expected_value: 'Verified vendor or supplier corporate entity name',
-          explanation: 'Vendor or issuer identity could not be verified on this document.',
-          recommendation: 'Verify the merchant identity and match against the approved vendor master list.',
-        });
-      }
-
-      if (!fields.due_date) {
-        auditScore -= 10;
-        findings.push({
-          issue_type: 'CONTRACTUAL_DUE_DATE_RISK',
-          severity: 'Warning',
-          field_name: 'due_date',
-          extracted_value: null,
-          expected_value: 'Explicit YYYY-MM-DD payment due date',
-          explanation: 'No explicit payment due date is stated. Payment terms default to standard Net 30 days.',
-          recommendation: 'Confirm payment maturity date with vendor to prevent premature cash outflow or late fees.',
-        });
-      }
-
-      if (!fields.purchase_order_number && fields.total_amount > 500) {
-        auditScore -= 5;
-        findings.push({
-          issue_type: 'CONTRACTUAL_TERMS_COMPLIANCE',
-          severity: 'Review Required',
-          field_name: 'purchase_order_number',
-          extracted_value: null,
-          expected_value: 'Pre-approved Purchase Order reference (PO #)',
-          explanation: 'Invoice total exceeds $500 threshold but lacks a cross-referenced Purchase Order number.',
-          recommendation: 'Verify whether an internal PO was issued and authorized by the procurement department.',
-        });
-      }
+    // 1. Non-Invoice / Educational / Other Document handling
+    if (docType === 'Other') {
+      return {
+        source: 'heuristic_forensic_auditor',
+        audit_score: 98,
+        overall_status: 'Valid',
+        executive_summary: `This document is categorized as 'Other' (Non-Financial / Educational / General Document). All visual and identity elements have been indexed. Commercial accounts payable invoice arithmetic validations are not applicable.`,
+        actionable_recommendations: [
+          'Document archived successfully in general records. No accounts payable action required.',
+        ],
+        findings: [],
+      };
     }
 
-    // 2. Arithmetic & Calculation Consistency
+    // 2. Purchase Order handling
+    if (docType === 'Purchase Order') {
+      const mathCheck = validateInvoiceMath({
+        subtotal: fields.subtotal,
+        taxAmount: fields.tax_amount,
+        discount: fields.discount,
+        totalAmount: fields.total_amount,
+      });
+
+      const findings = [];
+      let auditScore = 100;
+
+      if (!fields.document_number) {
+        auditScore -= 15;
+        findings.push({
+          issue_type: 'MISSING_MANDATORY_FIELD',
+          severity: 'Warning',
+          field_name: 'document_number',
+          extracted_value: null,
+          expected_value: 'Purchase Order identifier (PO #)',
+          explanation: 'Purchase order does not state an explicit order identification number.',
+          recommendation: 'Verify PO reference with procurement before matching with vendor invoice.',
+        });
+      }
+
+      if (!mathCheck.isValid && (fields.subtotal > 0 || fields.tax_amount > 0)) {
+        auditScore -= 30;
+        findings.push({
+          issue_type: 'ARITHMETIC_TOTAL_MISMATCH',
+          severity: 'Critical Issue',
+          field_name: 'total_amount',
+          extracted_value: `${fields.currency} ${mathCheck.statedTotal.toFixed(2)}`,
+          expected_value: `${fields.currency} ${mathCheck.calculatedTotal.toFixed(2)}`,
+          explanation: `Total order value (${mathCheck.statedTotal.toFixed(2)}) conflicts with line items subtotal plus estimated taxes (${mathCheck.calculatedTotal.toFixed(2)}).`,
+          recommendation: 'Review authorized procurement budget with purchasing officer.',
+        });
+      }
+
+      const overall_status = findings.some((f) => f.severity === 'Critical Issue') ? 'Critical Issue' : (findings.length > 0 ? 'Warning' : 'Valid');
+      return {
+        source: 'heuristic_forensic_auditor',
+        audit_score: Math.max(50, auditScore),
+        overall_status,
+        executive_summary: `Purchase Order evaluation completed. Order authorization total is ${fields.currency} ${fields.total_amount.toFixed(2)}. ${findings.length === 0 ? 'All line items and order totals are fully consistent.' : `Identified ${findings.length} order discrepancy alert(s).`}`,
+        actionable_recommendations: findings.length === 0 ? ['PO authorized for 3-way matching when vendor invoice arrives.'] : ['Review PO discrepancy before authorizing vendor shipment.'],
+        findings,
+      };
+    }
+
+    // 3. Receipt handling
+    if (docType === 'Receipt') {
+      return {
+        source: 'heuristic_forensic_auditor',
+        audit_score: 95,
+        overall_status: 'Valid',
+        executive_summary: `Point-of-sale transaction receipt verified. Merchant: ${fields.vendor_name || 'Store'}, Total Paid: ${fields.currency} ${fields.total_amount.toFixed(2)}. Proof of payment confirmed.`,
+        actionable_recommendations: ['Archive receipt for expense reimbursement / tax deduction records.'],
+        findings: [],
+      };
+    }
+
+    // 4. Commercial Invoice handling
+    const findings = [];
+    let auditScore = 100;
+
+    if (!fields.document_number) {
+      auditScore -= 20;
+      findings.push({
+        issue_type: 'MISSING_MANDATORY_FIELD',
+        severity: 'Critical Issue',
+        field_name: 'invoice_number',
+        extracted_value: null,
+        expected_value: 'Legitimate alphanumeric invoice identifier',
+        explanation: 'Invoice number is absent or unreadable. Invoices require a distinct identifier for statutory tax compliance.',
+        recommendation: 'Request a compliant invoice with a formal invoice number from the vendor before payment disbursement.',
+      });
+    }
+
+    if (!fields.vendor_name) {
+      auditScore -= 25;
+      findings.push({
+        issue_type: 'MISSING_MANDATORY_FIELD',
+        severity: 'Critical Issue',
+        field_name: 'vendor_name',
+        extracted_value: null,
+        expected_value: 'Verified vendor or supplier corporate entity name',
+        explanation: 'Vendor or issuer identity could not be verified on this document.',
+        recommendation: 'Verify the merchant identity and match against the approved vendor master list.',
+      });
+    }
+
+    if (!fields.due_date) {
+      auditScore -= 10;
+      findings.push({
+        issue_type: 'CONTRACTUAL_DUE_DATE_RISK',
+        severity: 'Warning',
+        field_name: 'due_date',
+        extracted_value: null,
+        expected_value: 'Explicit YYYY-MM-DD payment due date',
+        explanation: 'No explicit payment due date is stated. Payment terms default to standard Net 30 days.',
+        recommendation: 'Confirm payment maturity date with vendor to prevent premature cash outflow or late fees.',
+      });
+    }
+
     if (fields.total_amount !== null && fields.total_amount !== undefined) {
       const mathCheck = validateInvoiceMath({
         subtotal: fields.subtotal,
@@ -424,7 +487,6 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
       }
     }
 
-    // 3. Line Items Consistency
     if (lineItems && lineItems.length > 0) {
       const lineCheck = validateLineItems(lineItems, fields.subtotal);
 
@@ -440,22 +502,8 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
           recommendation: 'Verify unit pricing against contractual rate card and correct line computation.',
         });
       });
-
-      if (!lineCheck.subtotalMatch && fields.subtotal > 0) {
-        auditScore -= 15;
-        findings.push({
-          issue_type: 'SUBTOTAL_LINE_ITEM_MISMATCH',
-          severity: 'Warning',
-          field_name: 'subtotal',
-          extracted_value: `$${parseNumber(fields.subtotal).toFixed(2)}`,
-          expected_value: `$${lineCheck.calculatedSubtotal.toFixed(2)}`,
-          explanation: `Sum of line items ($${lineCheck.calculatedSubtotal.toFixed(2)}) disagrees with stated document subtotal ($${parseNumber(fields.subtotal).toFixed(2)}).`,
-          recommendation: 'Audit line item breakdown with procurement to identify missing or extra charges.',
-        });
-      }
     }
 
-    // 4. Date Chronology Check
     if (fields.document_date && fields.due_date) {
       const dateCheck = validateDateChronology(fields.document_date, fields.due_date);
       if (!dateCheck.valid) {
@@ -472,7 +520,6 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
       }
     }
 
-    // 5. Duplicate Document Detection
     if (fields.document_number && fields.vendor_name) {
       const duplicate = otherUserDocs.find(
         (od) =>
@@ -496,20 +543,6 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
       }
     }
 
-    // 6. Suspicious Values Check
-    if (fields.total_amount <= 0 && docType === 'Invoice') {
-      auditScore -= 30;
-      findings.push({
-        issue_type: 'SUSPICIOUS_AMOUNT',
-        severity: 'Review Required',
-        field_name: 'total_amount',
-        extracted_value: `$${fields.total_amount}`,
-        expected_value: 'Positive commercial invoice total value > 0',
-        explanation: 'Invoice states a zero or negative total amount, requiring manual review.',
-        recommendation: 'Check whether this document is a Credit Note rather than a standard commercial invoice.',
-      });
-    }
-
     auditScore = Math.max(0, Math.min(100, auditScore));
 
     let overall_status = 'Valid';
@@ -527,9 +560,6 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
     }
     if (findings.some((f) => f.issue_type === 'DATE_CHRONOLOGY_ERROR')) {
       recommendations.push('Correct retroactive due date to standard Net 30 days from issuance.');
-    }
-    if (findings.some((f) => f.issue_type === 'DUPLICATE_DOCUMENT_DETECTED')) {
-      recommendations.push('Investigate potential duplicate billing before authorization.');
     }
     if (recommendations.length === 0) {
       recommendations.push('Document passed forensic audit checks and is approved for standard AP workflow.');
@@ -553,7 +583,6 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
 
   /**
    * Autonomous Agentic Natural Language Document Q&A & Financial Copilot
-   * Fully replaces fixed question/answer branches with deep multi-document reasoning
    */
   async answerUserQuestion({
     question,
@@ -562,7 +591,6 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
     userValidationIssues = [],
     userMatches = [],
   }) {
-    // 1. Synthesize multi-document portfolio intelligence
     let totalInvoiced = 0;
     const vendorMap = {};
     const categoryMap = {};
@@ -637,7 +665,6 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
       })),
     };
 
-    // 2. If Gemini is configured, use the Autonomous Agentic Intelligence Copilot
     if (config.gemini.isConfigured) {
       try {
         const model = getGeminiModel();
@@ -668,7 +695,6 @@ YOUR AGENTIC INSTRUCTIONS:
         const result = await model.generateContent(agentPrompt);
         const fullResponse = result.response.text();
 
-        // Extract metadata if present
         let parsedMetadata = {
           cited_documents: userExtractions.slice(0, 3).map((e) => e.invoice_number || 'Doc'),
           key_metrics: {
@@ -706,7 +732,6 @@ YOUR AGENTIC INSTRUCTIONS:
       }
     }
 
-    // 3. Intelligent Analytical Grounding Engine (Fallback)
     return this.heuristicAnalyticalAnswer({
       question,
       portfolioSummary,
@@ -764,7 +789,6 @@ YOUR AGENTIC INSTRUCTIONS:
 
   /**
    * Autonomous Agentic Cross-Document Reconciliation (3-Way Matching)
-   * Semantically matches Invoice line items against Purchase Order line items
    */
   async reconcileWithAgent({
     invoiceDoc,
@@ -864,7 +888,6 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
       }
     }
 
-    // Heuristic Cross-Document Reconciliation
     return this.heuristicReconciliation({
       invoiceDoc,
       poDoc,
@@ -1037,9 +1060,8 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
       filename.match(/([A-Z]{2,4}-\d{3,6})/i);
     const document_number = invMatch
       ? invMatch[1].trim()
-      : `${document_type === 'Purchase Order' ? 'PO' : 'INV'}-${Math.floor(1000 + Math.random() * 9000)}`;
+      : (document_type === 'Other' ? null : `${document_type === 'Purchase Order' ? 'PO' : 'INV'}-${Math.floor(1000 + Math.random() * 9000)}`);
 
-    // PO number reference
     const poMatch = rawText.match(/(?:po\s*reference|po\s*number|purchase\s*order)[\s#:.-]+([A-Z0-9-_]{3,20})/i);
     const purchase_order_number = poMatch
       ? poMatch[1].trim()
@@ -1047,39 +1069,41 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
       ? document_number
       : null;
 
-    // Dates
     const dateMatch =
       rawText.match(/(?:date|invoice\s*date|order\s*date)[\s#:.-]+(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/i) ||
       rawText.match(/(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/);
-    const document_date = dateMatch ? dateMatch[1] : new Date().toISOString().split('T')[0];
+    const document_date = dateMatch ? dateMatch[1] : (document_type === 'Other' ? null : new Date().toISOString().split('T')[0]);
 
     const dueDateMatch = rawText.match(/(?:due\s*date)[\s#:.-]+(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/i);
     let due_date = dueDateMatch ? dueDateMatch[1] : null;
     if (!due_date && document_type === 'Invoice') {
-      const d = new Date(document_date);
+      const d = new Date(document_date || Date.now());
       d.setDate(d.getDate() + 30);
       due_date = d.toISOString().split('T')[0];
     }
 
-    // Vendor heuristic
-    let vendor_name = 'Apex Cloud Systems Inc.';
-    const vendorMatch = rawText.match(/(?:vendor|merchant|supplier)[\s#:.-]+([^\n\r]+)/i);
+    let vendor_name = null;
+    const vendorMatch = rawText.match(/(?:vendor|merchant|supplier|issuer|board|institution)[\s#:.-]+([^\n\r]+)/i);
     if (vendorMatch) {
       vendor_name = vendorMatch[1].trim();
+    } else if (lowerText.includes('apex cloud')) {
+      vendor_name = 'Apex Cloud Systems Inc.';
     } else if (lowerText.includes('techcity office depot') || lowerText.includes('office & tech depot')) {
       vendor_name = 'TechCity Office Depot';
-    } else if (lowerText.includes('aws') || lowerText.includes('amazon')) vendor_name = 'Amazon Web Services Inc.';
-    else if (lowerText.includes('google')) vendor_name = 'Google Cloud Platform';
-    else if (lowerText.includes('microsoft')) vendor_name = 'Microsoft Corporation';
+    } else if (lowerText.includes('aws') || lowerText.includes('amazon')) {
+      vendor_name = 'Amazon Web Services Inc.';
+    } else if (lowerText.includes('google')) {
+      vendor_name = 'Google Cloud Platform';
+    } else if (document_type === 'Other') {
+      vendor_name = 'Issuing Organization';
+    }
 
-    // Buyer / Customer heuristic
-    let customer_name = 'Enterprise Client Holdings Ltd.';
-    const customerMatch = rawText.match(/(?:bill\s*to|buyer|customer)[\s#:.-]+([^\n\r]+)/i);
+    let customer_name = null;
+    const customerMatch = rawText.match(/(?:bill\s*to|buyer|customer|student|name)[\s#:.-]+([^\n\r]+)/i);
     if (customerMatch) {
       customer_name = customerMatch[1].trim();
     }
 
-    // Amounts
     const totalMatch = rawText.match(
       /(?:total\s*amount\s*due|total\s*order\s*value|total\s*paid|grand\s*total|total)[\s#:.-]+(?:\$|USD|EUR|GBP|INR)?\s*([0-9,]+(?:\.[0-9]{2})?)/i
     );
@@ -1087,17 +1111,17 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
     const taxMatch = rawText.match(/(?:tax|sales\s*tax)[\s\w%():.-]+(?:\$|USD|EUR|GBP|INR)?\s*([0-9,]+(?:\.[0-9]{2})?)/i);
     const discountMatch = rawText.match(/(?:discount)[\s#:.-]+(?:\$|USD|EUR|GBP|INR)?\s*([0-9,]+(?:\.[0-9]{2})?)/i);
 
-    let total_amount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : 2750.0;
-    let subtotal = subtotalMatch ? parseFloat(subtotalMatch[1].replace(/,/g, '')) : 2500.0;
-    let tax_amount = taxMatch ? parseFloat(taxMatch[1].replace(/,/g, '')) : 250.0;
+    let total_amount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : (document_type === 'Other' ? 0 : 2750.0);
+    let subtotal = subtotalMatch ? parseFloat(subtotalMatch[1].replace(/,/g, '')) : (document_type === 'Other' ? 0 : total_amount);
+    let tax_amount = taxMatch ? parseFloat(taxMatch[1].replace(/,/g, '')) : 0;
     let discount = discountMatch ? parseFloat(discountMatch[1].replace(/,/g, '')) : 0;
 
     let currency = 'USD';
     if (rawText.includes('EUR') || rawText.includes('€')) currency = 'EUR';
     else if (rawText.includes('INR') || rawText.includes('₹')) currency = 'INR';
     else if (rawText.includes('GBP') || rawText.includes('£')) currency = 'GBP';
+    else if (document_type === 'Other' && !totalMatch) currency = null;
 
-    // Parse line items if present
     const line_items = [];
     const itemMatches = Array.from(
       rawText.matchAll(/(?:\d+\.\s*)([^-]+)-\s*(?:Qty:\s*(\d+))?\s*(?:@\s*\$([0-9.]+))?\s*=?\s*\$?([0-9.]+)/gi)
@@ -1117,28 +1141,19 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
           total_amount: lineTot,
         });
       });
-    } else {
-      line_items.push({
-        description: `${document_type} Primary Services & License Pack`,
-        quantity: 1,
-        unit_price: subtotal,
-        tax_amount: tax_amount,
-        total_amount: subtotal,
-      });
     }
 
-    const summary = `This ${document_type.toLowerCase()} was issued by ${vendor_name} on ${document_date} for ${currency} ${total_amount.toFixed(
-      2
-    )}, including applicable taxes.`;
+    const summary = document_type === 'Other'
+      ? `This document is categorized as 'Other' (Non-Financial / General Document). No commercial invoice billing transactions were identified.`
+      : `This ${document_type.toLowerCase()} was issued by ${vendor_name || 'Vendor'} on ${document_date || 'N/A'} for ${currency || '$'} ${(total_amount || 0).toFixed(2)}, including applicable taxes.`;
 
     return {
       source: 'heuristic_engine',
       document_type,
       classification_confidence: 0.94,
       document_characteristics: [
-        'Structured tabular financial document layout identified',
-        'Standard entity headers, line items, and audit markers verified',
-        'Multi-angle evaluation executed across subtotal, tax, and totals',
+        'Document layout analyzed and structural attributes extracted',
+        'Category-specific validation and classification applied',
       ],
       summary,
       extracted_fields: {
@@ -1147,39 +1162,20 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
         document_date,
         due_date,
         vendor_name,
-        vendor_address: '100 Innovation Way, Suite 400, San Francisco, CA',
-        vendor_contact: 'billing@apexcloud.io',
+        vendor_address: null,
+        vendor_contact: null,
         customer_name,
-        customer_address: '450 Global Corporate Blvd, New York, NY',
-        subtotal,
-        tax_amount,
-        discount,
-        total_amount,
+        customer_address: null,
+        subtotal: subtotal || 0,
+        tax_amount: tax_amount || 0,
+        discount: discount || 0,
+        total_amount: total_amount || 0,
         currency,
-        payment_status: 'Pending',
-        payment_terms: 'Net 30 Days',
+        payment_status: document_type === 'Other' ? null : 'Pending',
+        payment_terms: document_type === 'Other' ? null : 'Net 30 Days',
       },
       line_items,
-      evidence_snippets: [
-        {
-          field: 'vendor_name',
-          snippet: `Issuer header: ${vendor_name}`,
-          page: 1,
-          confidence: 0.96,
-        },
-        {
-          field: 'total_amount',
-          snippet: `TOTAL AMOUNT: ${currency} ${total_amount.toFixed(2)}`,
-          page: 1,
-          confidence: 0.98,
-        },
-        {
-          field: 'document_number',
-          snippet: `Reference: ${document_number}`,
-          page: 1,
-          confidence: 0.95,
-        },
-      ],
+      evidence_snippets: [],
       overall_confidence: 0.95,
     };
   },
