@@ -61,5 +61,20 @@ export const documentService = {
     const res = await api.delete(`/documents/${id}`);
     return res.data;
   },
+
+  async getDocumentSheetData(id) {
+    const res = await api.get(`/documents/${id}/sheet-data`);
+    return res.data;
+  },
+
+  async getDocumentInvoice(id) {
+    const res = await api.get(`/documents/${id}/invoice`);
+    return res.data;
+  },
+
+  async getArrangedInvoices(params = {}) {
+    const res = await api.get('/documents/invoices/arranged', { params });
+    return res.data;
+  },
 };
 

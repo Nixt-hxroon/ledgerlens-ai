@@ -21,14 +21,32 @@ import { formatFileSize } from '../utils/formatters';
 
 const DEMO_SAMPLES = [
   {
+    name: 'sample_invoice_sheet.xlsx',
+    title: 'Excel Commercial Invoice (.xlsx)',
+    desc: 'Structured spreadsheet invoice ($3,190.00) with line items & taxes',
+    category: 'Excel (XLSX)',
+  },
+  {
+    name: 'sample_vendor_ledger.csv',
+    title: 'Vendor Transaction Ledger (.csv)',
+    desc: 'CSV multi-row service ledger ($3,850.00) parsed into line items',
+    category: 'Ledger (CSV)',
+  },
+  {
+    name: 'sample_macro_invoice.xlsm',
+    title: 'Macro-Enabled Invoice (.xlsm)',
+    desc: 'Industrial automation hardware invoice ($3,078.00) in XLSM format',
+    category: 'Macro (XLSM)',
+  },
+  {
     name: 'sample_invoice_valid.pdf',
-    title: 'Valid Enterprise Invoice',
+    title: 'Valid Enterprise Invoice (PDF)',
     desc: 'Apex Cloud compute cluster ($2,750.00) with clean arithmetic & matching PO',
-    category: 'Invoice',
+    category: 'Invoice (PDF)',
   },
   {
     name: 'sample_purchase_order.pdf',
-    title: 'Matching Purchase Order',
+    title: 'Matching Purchase Order (PDF)',
     desc: 'Official PO-2026-9041 issued to Apex Cloud for reconciliation',
     category: 'Purchase Order',
   },
@@ -40,7 +58,7 @@ const DEMO_SAMPLES = [
   },
   {
     name: 'sample_receipt.pdf',
-    title: 'Retail Hardware Receipt',
+    title: 'Retail Hardware Receipt (PDF)',
     desc: 'TechCity Depot transaction receipt ($195.27) with itemized items',
     category: 'Receipt',
   },
@@ -56,13 +74,14 @@ export const DocumentUpload = () => {
   const navigate = useNavigate();
 
   const handleFiles = (incomingFiles) => {
-    const validMimes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.csv', '.xlsx', '.xlsm'];
     const maxBytes = 15 * 1024 * 1024;
 
     const newItems = [];
     for (const file of incomingFiles) {
-      if (!validMimes.includes(file.type)) {
-        toast.error(`"${file.name}" has an unsupported format. Please upload PDF or JPG/PNG.`);
+      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+      if (!allowedExtensions.includes(ext)) {
+        toast.error(`"${file.name}" has an unsupported format. Please upload PDF, PNG, JPG, CSV, XLSX, or XLSM.`);
         continue;
       }
       if (file.size > maxBytes) {
@@ -75,7 +94,7 @@ export const DocumentUpload = () => {
         file,
         name: file.name,
         size: file.size,
-        type: file.type,
+        type: file.type || ext,
         progress: 0,
         status: 'Ready', // 'Ready' | 'Uploading' | 'Analyzing' | 'Completed' | 'Error'
         documentId: null,
@@ -158,26 +177,19 @@ export const DocumentUpload = () => {
   // Helper to load sample files directly from backend/sample_data
   const handleLoadSample = async (sampleName) => {
     try {
-      toast.info(`Fetching synthetic document "${sampleName}"...`);
-      // We can fetch from API or create a simulated file buffer from known sample
-      const res = await fetch(`/api/health`); // quick connectivity check
-      
-      // Load sample via custom helper or trigger direct upload
-      const response = await fetch(`http://localhost:5000/sample_data/${sampleName}`).catch(() => null);
-      
-      let blob;
-      if (response && response.ok) {
-        blob = await response.blob();
-      } else {
-        // Fallback: create mock blob
-        blob = new Blob([`SAMPLE DOCUMENT: ${sampleName}`], { type: 'application/pdf' });
+      toast.info(`Fetching sample document "${sampleName}"...`);
+      const response = await fetch(`/sample_data/${sampleName}`).catch(() => null);
+      if (!response || !response.ok) {
+        throw new Error('Sample not found on server');
       }
-
-      const file = new File([blob], sampleName, { type: 'application/pdf' });
+      const blob = await response.blob();
+      const ext = sampleName.slice(sampleName.lastIndexOf('.')).toLowerCase();
+      const type = ext === '.csv' ? 'text/csv' : ext.includes('xls') ? 'application/vnd.ms-excel' : 'application/pdf';
+      const file = new File([blob], sampleName, { type });
       handleFiles([file]);
       toast.success(`Loaded "${sampleName}" into upload queue.`);
     } catch (e) {
-      toast.error('Could not load sample document.');
+      toast.error('Could not load sample document: ' + e.message);
     }
   };
 
@@ -249,7 +261,7 @@ export const DocumentUpload = () => {
           ref={fileInputRef}
           onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))}
           multiple
-          accept=".pdf,.jpg,.jpeg,.png"
+          accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xlsm"
           className="hidden"
         />
 
@@ -258,14 +270,14 @@ export const DocumentUpload = () => {
         </div>
 
         <h3 className="text-base font-bold text-zinc-900">
-          Drop your business documents here
+          Drop your business documents & spreadsheets here
         </h3>
         <p className="text-xs text-zinc-500 mt-1 max-w-sm">
-          Drag & drop invoices, receipts, or purchase orders, or click to browse files
+          Drag & drop invoices, receipts, purchase orders, CSVs, or Excel sheets (.xlsx / .xlsm)
         </p>
 
         <div className="flex items-center gap-2 mt-4 text-[11px] font-semibold text-zinc-400">
-          <span>Supported: PDF, JPG, PNG</span>
+          <span>Supported: PDF, XLSX, XLSM, CSV, JPG, PNG</span>
           <span>•</span>
           <span>Max file size: 15 MB</span>
         </div>
@@ -361,6 +373,25 @@ export const DocumentUpload = () => {
               </div>
             ))}
           </div>
+
+          {filesQueue.some((i) => i.status === 'Completed') && (
+            <div className="mt-4 pt-4 border-t border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-50 p-4 rounded-2xl">
+              <div>
+                <p className="text-xs font-bold text-zinc-900">Documents Ingested & Evaluated</p>
+                <p className="text-[11px] text-zinc-500">
+                  Arrange all your uploaded documents and inspect each document's formal invoice.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/documents?view=invoices')}
+                icon={ArrowRight}
+              >
+                Arrange Documents & View Invoices →
+              </Button>
+            </div>
+          )}
         </Card>
       )}
     </div>

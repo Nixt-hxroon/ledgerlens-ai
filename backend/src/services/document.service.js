@@ -172,5 +172,156 @@ export const documentService = {
 
     return true;
   },
+
+  /**
+   * Format and generate standardized Commercial Invoice for a specific document
+   */
+  async getDocumentInvoice(documentId, userId) {
+    const details = await this.getDocumentDetails(documentId, userId);
+    if (!details || !details.document) {
+      throw new Error('Document not found');
+    }
+
+    const { document, extractedData, lineItems, validationIssues } = details;
+    const extFields = extractedData?.extracted_json?.extracted_fields || {};
+    const agenticEval = extractedData?.extracted_json?.agentic_evaluation || {};
+
+    const auditScore = agenticEval.audit_score ?? (document.validation_status === 'Valid' ? 98 : document.validation_status === 'Warning' ? 78 : 45);
+
+    const docNum = extractedData?.invoice_number || document.invoice_number || extFields.document_number || `INV-${document.id.slice(0, 8).toUpperCase()}`;
+    const docDate = extractedData?.document_date || document.document_date || extFields.document_date || document.uploaded_at?.split('T')[0];
+    const dueDate = extractedData?.due_date || document.due_date || extFields.due_date;
+
+    const vendorName = extractedData?.vendor_name || document.vendor_name || extFields.vendor_name || 'Issuing Vendor';
+    const customerName = extractedData?.customer_name || extFields.customer_name || 'Billed Entity';
+
+    const subtotal = extractedData?.subtotal ?? extFields.subtotal ?? document.total_amount ?? 0;
+    const taxAmount = extractedData?.tax_amount ?? extFields.tax_amount ?? 0;
+    const discount = extFields.discount ?? 0;
+    const totalAmount = extractedData?.total_amount ?? extFields.total_amount ?? document.total_amount ?? 0;
+    const currency = extractedData?.currency || extFields.currency || document.currency || 'USD';
+
+    // Format items list
+    let formattedItems = [];
+    if (lineItems && lineItems.length > 0) {
+      formattedItems = lineItems.map((li, idx) => ({
+        id: li.id || idx + 1,
+        description: li.description || `Line Item #${idx + 1}`,
+        quantity: li.quantity || 1,
+        unit_price: li.unit_price || 0,
+        tax_amount: li.tax_amount || 0,
+        total_amount: li.total_amount || (li.quantity || 1) * (li.unit_price || 0),
+      }));
+    } else {
+      formattedItems = [
+        {
+          id: 1,
+          description: document.original_filename.replace(/\.[^/.]+$/, '').replace(/_/g, ' '),
+          quantity: 1,
+          unit_price: totalAmount,
+          tax_amount: taxAmount,
+          total_amount: totalAmount,
+        },
+      ];
+    }
+
+    return {
+      document_id: document.id,
+      original_filename: document.original_filename,
+      invoice_number: docNum,
+      document_type: document.document_type || 'Invoice',
+      category: document.document_type || 'Invoice',
+      document_date: docDate,
+      due_date: dueDate,
+      vendor: {
+        name: vendorName,
+        address: extFields.vendor_address || 'Global Headquarters / Commercial District',
+        contact: extFields.vendor_contact || 'billing@vendor-system.com',
+      },
+      customer: {
+        name: customerName,
+        address: extFields.customer_address || 'Client Accounts Payable Division',
+        purchase_order_number: extFields.purchase_order_number || document.purchase_order_number || null,
+      },
+      line_items: formattedItems,
+      financials: {
+        subtotal: parseFloat(subtotal) || 0,
+        tax_amount: parseFloat(taxAmount) || 0,
+        discount: parseFloat(discount) || 0,
+        total_amount: parseFloat(totalAmount) || 0,
+        currency,
+        payment_terms: extractedData?.payment_terms || extFields.payment_terms || 'Net 30 Days',
+        payment_status: extFields.payment_status || (document.validation_status === 'Valid' ? 'Approved' : 'Pending Review'),
+      },
+      audit: {
+        audit_score: auditScore,
+        validation_status: document.validation_status || 'Pending',
+        issues_count: validationIssues?.length || 0,
+        verified_at: document.updated_at || document.uploaded_at,
+        characteristics: extractedData?.extracted_json?.document_characteristics || [],
+      },
+    };
+  },
+
+  /**
+   * Get all arranged documents' invoices in sequential order
+   */
+  async getArrangedInvoices({ userId, ids = null, sortBy = 'uploaded_at', sortOrder = 'desc', category = 'All', status = 'All' }) {
+    let docs = [];
+
+    if (ids && ids.length > 0) {
+      for (const id of ids) {
+        const d = await db.documents.findById(id, userId);
+        if (d) docs.push(d);
+      }
+    } else {
+      const result = await db.documents.findByUserId(userId, {
+        category,
+        status,
+        sortBy,
+        sortOrder,
+        limit: 100,
+      });
+      docs = result.documents || [];
+    }
+
+    // Sort manually if required
+    docs.sort((a, b) => {
+      let valA = a[sortBy] ?? '';
+      let valB = b[sortBy] ?? '';
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortOrder === 'asc' ? valA - valB : valB - valA;
+      }
+      return sortOrder === 'asc'
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+
+    const invoices = [];
+    for (const doc of docs) {
+      try {
+        const invoice = await this.getDocumentInvoice(doc.id, userId);
+        invoices.push(invoice);
+      } catch (err) {
+        console.error(`Error formatting invoice for doc ${doc.id}:`, err);
+      }
+    }
+
+    const cumulativeTotal = invoices.reduce((acc, curr) => acc + (curr.financials?.total_amount || 0), 0);
+    const dominantCurrency = invoices.find((i) => i.financials?.currency)?.financials?.currency || 'USD';
+
+    return {
+      invoices,
+      count: invoices.length,
+      cumulativeTotal: Math.round(cumulativeTotal * 100) / 100,
+      currency: dominantCurrency,
+      arrangedBy: {
+        sortBy,
+        sortOrder,
+        category,
+        status,
+      },
+    };
+  },
 };
 

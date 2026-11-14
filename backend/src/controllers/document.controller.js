@@ -1,3 +1,4 @@
+import XLSX from 'xlsx';
 import { documentService } from '../services/document.service.js';
 import { db } from '../storage/db.js';
 import { fileStorage } from '../storage/fileStorage.js';
@@ -213,6 +214,83 @@ export const documentController = {
       const { id } = req.params;
       await documentService.deleteDocument(id, req.user.id);
       return successResponse(res, null, 'Document deleted successfully.');
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * Get parsed spreadsheet data (sheets, headers, rows) for interactive table preview
+   */
+  async getDocumentSheetData(req, res, next) {
+    try {
+      const { id } = req.params;
+      const doc = await db.documents.findById(id, req.user.id);
+      if (!doc) throw new AppError('Document not found.', 404);
+
+      const ext = doc.original_filename.toLowerCase().slice(doc.original_filename.lastIndexOf('.'));
+      const isSpreadsheet = ['.csv', '.xlsx', '.xlsm'].includes(ext) || doc.mime_type === 'text/csv';
+
+      if (!isSpreadsheet) {
+        return successResponse(res, { isSpreadsheet: false });
+      }
+
+      const buffer = await fileStorage.getFileBuffer(doc.storage_path);
+      if (!buffer) throw new AppError('Document file buffer not accessible.', 404);
+
+      const wb = XLSX.read(buffer, { type: 'buffer' });
+      const sheets = wb.SheetNames.map((name) => {
+        const ws = wb.Sheets[name];
+        const rawGrid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        const headers = (rawGrid[0] || []).map((h, i) => String(h || `Column ${i + 1}`));
+        const rows = rawGrid.slice(1);
+        return {
+          name,
+          headers,
+          rows,
+          rowCount: rows.length,
+          colCount: headers.length,
+        };
+      });
+
+      return successResponse(res, {
+        isSpreadsheet: true,
+        filename: doc.original_filename,
+        sheets,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * Get structured commercial invoice representation for a document
+   */
+  async getDocumentInvoice(req, res, next) {
+    try {
+      const { id } = req.params;
+      const invoice = await documentService.getDocumentInvoice(id, req.user.id);
+      return successResponse(res, invoice, 'Document commercial invoice generated.');
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * Get all arranged documents' invoices in sequential order
+   */
+  async getArrangedInvoices(req, res, next) {
+    try {
+      const { ids, sortBy = 'uploaded_at', sortOrder = 'desc', category, status } = req.query;
+      const invoices = await documentService.getArrangedInvoices({
+        userId: req.user.id,
+        ids: ids ? ids.split(',').filter(Boolean) : null,
+        sortBy,
+        sortOrder,
+        category,
+        status,
+      });
+      return successResponse(res, invoices, 'Arranged document invoices retrieved.');
     } catch (err) {
       next(err);
     }

@@ -2,9 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { config } from './config/env.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { errorResponse } from './utils/response.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 import authRoutes from './routes/auth.routes.js';
 import documentRoutes from './routes/document.routes.js';
@@ -51,6 +56,9 @@ app.use(morgan(config.nodeEnv === 'production' ? 'combined' : 'dev'));
 // Body parsers
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
+// Serve sample files for 1-click demos
+app.use('/sample_data', express.static(path.resolve(__dirname, '../sample_data')));
 
 // Health check endpoint (for Render / Vercel deployment monitoring)
 app.get('/api/health', (req, res) => {

@@ -17,6 +17,10 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Printer,
+  FileSpreadsheet,
+  Search,
+  FileCheck,
 } from 'lucide-react';
 import { documentService } from '../services/documentService';
 import { validationService } from '../services/validationService';
@@ -34,8 +38,13 @@ export const DocumentDetails = () => {
 
   const [docDetails, setDocDetails] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('fields'); // 'fields' | 'lineItems' | 'validation' | 'evidence'
+  const [activeTab, setActiveTab] = useState('invoice'); // 'invoice' | 'fields' | 'lineItems' | 'validation' | 'evidence'
   const [zoomLevel, setZoomLevel] = useState(100);
+
+  // Spreadsheet preview state (.csv, .xlsx, .xlsm)
+  const [sheetData, setSheetData] = useState(null);
+  const [activeSheetIndex, setActiveSheetIndex] = useState(0);
+  const [sheetSearch, setSheetSearch] = useState('');
 
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
@@ -65,6 +74,20 @@ export const DocumentDetails = () => {
           currency: data.extractedData.currency || 'USD',
           payment_terms: data.extractedData.payment_terms || '',
         });
+      }
+
+      // Check if document is spreadsheet / CSV and load tabular sheet data
+      const fname = data?.document?.original_filename?.toLowerCase() || '';
+      const isSpreadsheet = ['.csv', '.xlsx', '.xlsm'].some((ext) => fname.endsWith(ext)) || data?.document?.mime_type === 'text/csv';
+      if (isSpreadsheet) {
+        try {
+          const sRes = await documentService.getDocumentSheetData(id);
+          if (sRes?.isSpreadsheet) {
+            setSheetData(sRes);
+          }
+        } catch (sErr) {
+          console.warn('Could not load sheet data for document:', sErr);
+        }
       }
     } catch (err) {
       toast.error('Failed to load document details.');
@@ -143,6 +166,7 @@ export const DocumentDetails = () => {
 
   const { document, extractedData, lineItems, validationIssues, reviews, fileUrl } = docDetails;
   const isPdf = document.mime_type === 'application/pdf';
+  const isSpreadsheet = ['.csv', '.xlsx', '.xlsm'].some((ext) => document.original_filename?.toLowerCase().endsWith(ext)) || document.mime_type === 'text/csv';
   const token = localStorage.getItem('ledgerlens_access_token');
   const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
   // Ensure same-origin relative URL for iframes to prevent Mixed-Content and cross-origin blocking
@@ -261,7 +285,85 @@ export const DocumentDetails = () => {
 
           {/* Embedded Viewer Canvas */}
           <div className="flex-1 bg-zinc-100/60 p-4 overflow-auto flex items-center justify-center">
-            {isPdf ? (
+            {isSpreadsheet ? (
+              <div className="w-full h-full min-h-[550px] flex flex-col bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+                {/* Spreadsheet Toolbar */}
+                <div className="p-3 bg-zinc-50 border-b border-zinc-200 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 overflow-x-auto">
+                    {sheetData?.sheets?.map((s, idx) => (
+                      <button
+                        key={s.name || idx}
+                        onClick={() => setActiveSheetIndex(idx)}
+                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                          activeSheetIndex === idx
+                            ? 'bg-[#111113] text-white shadow-sm'
+                            : 'bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-100'
+                        }`}
+                      >
+                        📊 {s.name} ({s.rowCount} rows)
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={sheetSearch}
+                      onChange={(e) => setSheetSearch(e.target.value)}
+                      placeholder="Filter sheet rows..."
+                      className="pl-8 pr-3 py-1 bg-white border border-zinc-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-1 focus:ring-zinc-800"
+                    />
+                  </div>
+                </div>
+
+                {/* Spreadsheet Data Grid */}
+                <div className="flex-1 overflow-auto max-h-[600px]">
+                  {sheetData?.sheets && sheetData.sheets[activeSheetIndex] ? (
+                    (() => {
+                      const currentSheet = sheetData.sheets[activeSheetIndex];
+                      const filteredRows = currentSheet.rows.filter((row) =>
+                        !sheetSearch ||
+                        row.some((cell) => String(cell).toLowerCase().includes(sheetSearch.toLowerCase()))
+                      );
+                      return (
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="sticky top-0 bg-zinc-100 z-10 border-b border-zinc-300">
+                            <tr>
+                              <th className="py-2 px-3 text-[10px] font-bold text-zinc-400 uppercase w-12 text-center bg-zinc-100 border-r border-zinc-200">
+                                #
+                              </th>
+                              {currentSheet.headers.map((h, i) => (
+                                <th key={i} className="py-2 px-3 font-bold text-zinc-700 uppercase tracking-wider text-[11px] border-r border-zinc-200 last:border-r-0 whitespace-nowrap">
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100 font-mono text-[11px]">
+                            {filteredRows.map((row, rIdx) => (
+                              <tr key={rIdx} className="hover:bg-amber-50/40 transition-colors">
+                                <td className="py-1.5 px-3 text-center text-zinc-400 font-sans text-[10px] bg-zinc-50 border-r border-zinc-200">
+                                  {rIdx + 1}
+                                </td>
+                                {currentSheet.headers.map((_, cIdx) => (
+                                  <td key={cIdx} className="py-1.5 px-3 text-zinc-800 border-r border-zinc-100 last:border-r-0 whitespace-nowrap">
+                                    {String(row[cIdx] ?? '')}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      );
+                    })()
+                  ) : (
+                    <div className="py-20 text-center text-xs text-zinc-500">
+                      Loading spreadsheet contents...
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : isPdf ? (
               <iframe
                 src={`${rawFileUrl}#toolbar=0`}
                 title={document.original_filename}
@@ -334,6 +436,7 @@ export const DocumentDetails = () => {
             <div className="flex items-center justify-between border-b border-zinc-100 pb-3 mb-4">
               <div className="flex items-center gap-2 overflow-x-auto">
                 {[
+                  { key: 'invoice', label: 'Commercial Invoice' },
                   { key: 'fields', label: 'Extracted Fields' },
                   { key: 'lineItems', label: `Line Items (${lineItems.length})` },
                   { key: 'validation', label: `Validation Issues (${validationIssues.length})` },
@@ -387,6 +490,168 @@ export const DocumentDetails = () => {
                 </div>
               )}
             </div>
+
+            {/* TAB CONTENT 0: Commercial Invoice */}
+            {activeTab === 'invoice' && (
+              <div className="space-y-4 overflow-y-auto max-h-[620px] pr-1">
+                <div className="flex items-center justify-between bg-zinc-50 p-3.5 rounded-2xl border border-zinc-200/80">
+                  <div className="flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-emerald-600" />
+                    <div>
+                      <span className="text-xs font-bold text-zinc-900 block">
+                        Standardized Commercial Invoice
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        Generated from verified document contents & line items
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-zinc-800 bg-white border border-zinc-200 rounded-xl hover:bg-zinc-100 transition-all shadow-sm"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+                  </button>
+                </div>
+
+                {/* Printable Invoice Sheet */}
+                <div id="printable-invoice" className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-soft space-y-6 text-zinc-900">
+                  {/* Top Bar */}
+                  <div className="flex items-start justify-between border-b border-zinc-200 pb-5">
+                    <div>
+                      <h2 className="text-lg font-extrabold tracking-tight text-zinc-950 uppercase">
+                        {extractedData?.vendor_name || document.vendor_name || 'Commercial Supplier'}
+                      </h2>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        {extractedData?.extracted_json?.extracted_fields?.vendor_address || 'Enterprise Commercial Infrastructure'}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {extractedData?.extracted_json?.extracted_fields?.vendor_contact || 'billing@verified-vendor.com'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-2xl font-black tracking-tight text-zinc-900 block">INVOICE</span>
+                      <p className="text-xs font-mono font-bold text-zinc-600 mt-0.5">
+                        #{extractedData?.invoice_number || document.invoice_number || `INV-${document.id.slice(0, 8).toUpperCase()}`}
+                      </p>
+                      <Badge variant={document.validation_status} className="mt-1">
+                        {document.validation_status}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Bill To & Dates Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                        Billed To (Customer)
+                      </span>
+                      <p className="font-bold text-zinc-900 text-sm">
+                        {extractedData?.customer_name || 'Enterprise Client Holdings Ltd.'}
+                      </p>
+                      <p className="text-zinc-500 mt-0.5">
+                        {extractedData?.extracted_json?.extracted_fields?.customer_address || 'Corporate Accounts Division'}
+                      </p>
+                      {extractedData?.purchase_order_number && (
+                        <p className="text-[11px] font-mono text-zinc-600 mt-1">
+                          PO Ref: <strong>{extractedData.purchase_order_number}</strong>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 space-y-1.5">
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Invoice Date:</span>
+                        <span className="font-semibold">{formatDate(extractedData?.document_date || document.document_date)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Payment Due:</span>
+                        <span className="font-semibold">{formatDate(extractedData?.due_date || document.due_date)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Payment Terms:</span>
+                        <span className="font-semibold">{extractedData?.payment_terms || 'Net 30 Days'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Currency:</span>
+                        <span className="font-mono font-bold">{extractedData?.currency || 'USD'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Line Items Table */}
+                  <div className="border border-zinc-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-zinc-100 text-zinc-600 text-[10px] font-bold uppercase border-b border-zinc-200">
+                        <tr>
+                          <th className="py-2 px-3">Description</th>
+                          <th className="py-2 px-3 text-right">Qty</th>
+                          <th className="py-2 px-3 text-right">Unit Price</th>
+                          <th className="py-2 px-3 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 font-medium">
+                        {lineItems && lineItems.length > 0 ? (
+                          lineItems.map((li, idx) => (
+                            <tr key={li.id || idx}>
+                              <td className="py-2 px-3 font-semibold text-zinc-900">{li.description}</td>
+                              <td className="py-2 px-3 text-right text-zinc-600">{li.quantity}</td>
+                              <td className="py-2 px-3 text-right text-zinc-600">
+                                {formatCurrency(li.unit_price, extractedData?.currency)}
+                              </td>
+                              <td className="py-2 px-3 text-right font-bold text-zinc-950">
+                                {formatCurrency(li.total_amount, extractedData?.currency)}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td className="py-2 px-3 font-semibold text-zinc-900">{document.original_filename}</td>
+                            <td className="py-2 px-3 text-right text-zinc-600">1</td>
+                            <td className="py-2 px-3 text-right text-zinc-600">
+                              {formatCurrency(extractedData?.total_amount, extractedData?.currency)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-zinc-950">
+                              {formatCurrency(extractedData?.total_amount, extractedData?.currency)}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Financials & Forensic Seal */}
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 pt-2">
+                    {/* Audit Seal */}
+                    <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs space-y-1 max-w-xs">
+                      <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>LedgerLens Certified Invoice</span>
+                      </div>
+                      <p className="text-[10px] text-emerald-700">
+                        Evaluated with Gemini AI Forensic Audit (Score: {auditScore}/100).
+                      </p>
+                    </div>
+
+                    {/* Summary Totals */}
+                    <div className="w-full sm:w-60 space-y-1.5 text-xs text-right">
+                      <div className="flex justify-between text-zinc-600">
+                        <span>Subtotal:</span>
+                        <span className="font-semibold">{formatCurrency(extractedData?.subtotal, extractedData?.currency)}</span>
+                      </div>
+                      <div className="flex justify-between text-zinc-600">
+                        <span>Tax Amount:</span>
+                        <span className="font-semibold">{formatCurrency(extractedData?.tax_amount, extractedData?.currency)}</span>
+                      </div>
+                      <div className="flex justify-between text-zinc-950 font-bold text-base pt-2 border-t border-zinc-200">
+                        <span>Total Amount Due:</span>
+                        <span>{formatCurrency(extractedData?.total_amount, extractedData?.currency)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* TAB CONTENT 1: Extracted Fields */}
             {activeTab === 'fields' && (

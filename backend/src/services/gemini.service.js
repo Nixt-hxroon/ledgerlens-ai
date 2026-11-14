@@ -1,5 +1,6 @@
 import zlib from 'zlib';
 import pdfParse from 'pdf-parse';
+import XLSX from 'xlsx';
 import { getGeminiModel } from '../config/gemini.js';
 import { config } from '../config/env.js';
 import {
@@ -21,9 +22,39 @@ import {
  */
 export const geminiService = {
   /**
-   * Extract raw text from file buffer (with resilient multi-engine parsing)
+   * Extract raw text from file buffer (resilient multi-engine parsing: PDF + XLSX + XLSM + CSV)
    */
-  async extractTextFromFile(buffer, mimeType) {
+  async extractTextFromFile(buffer, mimeType, filename = '') {
+    const ext = filename ? filename.toLowerCase().slice(filename.lastIndexOf('.')) : '';
+    const isSpreadsheet =
+      ['.xlsx', '.xlsm', '.csv'].includes(ext) ||
+      mimeType === 'text/csv' ||
+      mimeType?.includes('spreadsheet') ||
+      mimeType?.includes('excel');
+
+    // Engine 0: Spreadsheet parser (XLSX, XLSM, CSV) via SheetJS
+    if (isSpreadsheet) {
+      try {
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const sheetOutputs = [];
+        for (const sheetName of wb.SheetNames) {
+          const ws = wb.Sheets[sheetName];
+          const csv = XLSX.utils.sheet_to_csv(ws);
+          if (csv && csv.trim()) {
+            sheetOutputs.push(`--- WORKBOOK SHEET: ${sheetName} ---\n${csv.trim()}`);
+          }
+        }
+        if (sheetOutputs.length > 0) {
+          return sheetOutputs.join('\n\n');
+        }
+      } catch (sheetErr) {
+        // Fallback for raw CSV text
+        if (ext === '.csv' || mimeType?.includes('csv') || mimeType === 'text/plain') {
+          return buffer.toString('utf8');
+        }
+      }
+    }
+
     if (mimeType !== 'application/pdf') {
       return '';
     }
@@ -112,7 +143,7 @@ export const geminiService = {
    * Ingest and process a document: Classification + Structured Extraction + Summary
    */
   async processDocument({ buffer, mimeType, filename }) {
-    const extractedText = await this.extractTextFromFile(buffer, mimeType);
+    const extractedText = await this.extractTextFromFile(buffer, mimeType, filename);
 
     if (config.gemini.isConfigured) {
       try {
@@ -169,6 +200,11 @@ SCHEMA:
 
 STRICT INSTRUCTIONS:
 - Identify document type based on its actual structural contents, NOT just the filename.
+- If the document is an Excel spreadsheet (.xlsx, .xlsm) or CSV file:
+  * Parse each row into individual line items with accurate descriptions, quantities, unit prices, and row amounts.
+  * Extract document number (Invoice #, Order #, PO #), vendor/supplier, customer, and date from the header rows.
+  * Compute subtotal, tax amount, and grand total amount if not explicitly provided in a summary row.
+  * Classify as "Invoice", "Purchase Order", or "Receipt" based on the business content of the spreadsheet.
 - If the document is an Educational Marksheet, Certificate, Student Transcript, ID Card, or Non-Financial document:
   * Classify as "Other".
   * Extract the issuing board/institution as vendor_name.
@@ -179,11 +215,14 @@ STRICT INSTRUCTIONS:
 - If a value is missing or not visible in the document, return null or 0 for numeric amounts. Never hallucinate data.
 - Ensure all numbers are clean numeric floats, not strings with currency symbols.
 - Include source evidence snippets for main fields (vendor, total, document number, date) so the user can verify them against the document.
-${extractedText ? `\n[Extracted Document Text for Reference]:\n${extractedText.slice(0, 4000)}` : ''}
+${extractedText ? `\n[Extracted Document Text for Reference]:\n${extractedText.slice(0, 6000)}` : ''}
 `;
 
         const parts = [prompt];
-        if (buffer && mimeType) {
+        const isMultimodalSupported =
+          mimeType === 'application/pdf' ||
+          mimeType?.startsWith('image/');
+        if (buffer && mimeType && isMultimodalSupported) {
           parts.push(this.fileToGenerativePart(buffer, mimeType));
         }
 
@@ -1141,6 +1180,47 @@ RETURN RAW JSON ONLY (no markdown blocks, no \`\`\`json):
           total_amount: lineTot,
         });
       });
+    }
+
+    // Parse CSV tabular rows if line items were not matched from text patterns
+    if (line_items.length === 0 && rawText.includes(',')) {
+      const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        if (
+          line.startsWith('---') ||
+          line.startsWith('[') ||
+          line.toLowerCase().includes('description') ||
+          line.toLowerCase().includes('item') ||
+          line.toLowerCase().includes('quantity')
+        ) {
+          continue;
+        }
+        const cols = line.split(',').map((c) => c.trim().replace(/^["']|["']$/g, ''));
+        if (cols.length >= 2) {
+          const numbers = cols
+            .map((c) => parseFloat(c.replace(/[^0-9.-]/g, '')))
+            .filter((n) => !isNaN(n));
+          if (numbers.length > 0) {
+            const lineTot = numbers[numbers.length - 1];
+            const qty = numbers.length >= 2 ? numbers[0] : 1;
+            const unit = numbers.length >= 3 ? numbers[1] : (qty ? lineTot / qty : lineTot);
+            const desc = cols.find((c) => isNaN(parseFloat(c))) || cols[0] || 'Item';
+            line_items.push({
+              description: desc,
+              quantity: qty || 1,
+              unit_price: Math.round(unit * 100) / 100,
+              tax_amount: 0,
+              total_amount: Math.round(lineTot * 100) / 100,
+            });
+          }
+        }
+      }
+
+      if (line_items.length > 0) {
+        const calculatedSubtotal = line_items.reduce((acc, curr) => acc + (curr.total_amount || 0), 0);
+        subtotal = subtotalMatch ? subtotal : calculatedSubtotal;
+        total_amount = totalMatch ? total_amount : (subtotal + tax_amount - discount);
+      }
     }
 
     const summary = document_type === 'Other'

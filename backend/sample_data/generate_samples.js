@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import XLSX from 'xlsx';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -145,7 +146,59 @@ async function main() {
     'Payment Method: Visa ending in 4022',
   ]);
 
-  console.log('✅ Generated 4 pristine PDF files with pdf-lib');
+  // 5. Sample Excel Commercial Invoice (.xlsx)
+  const xlsxWb = XLSX.utils.book_new();
+  const xlsxData = [
+    ['COMMERCIAL INVOICE', '', '', '', ''],
+    ['Invoice Number:', 'INV-2026-XLS88', '', 'Invoice Date:', '2026-11-14'],
+    ['Vendor / Supplier:', 'Nordic Logistics & Supplies', '', 'Payment Due Date:', '2026-12-14'],
+    ['Billed To (Customer):', 'Enterprise Operations Inc.', '', 'PO Reference:', 'PO-2026-9041'],
+    ['', '', '', '', ''],
+    ['Item Description', 'Quantity', 'Unit Price ($)', 'Tax Amount ($)', 'Line Total ($)'],
+    ['High-Density Server Racks', 4, 450.00, 180.00, 1800.00],
+    ['Fiber Optic Interconnect Cables (10m)', 20, 25.00, 50.00, 500.00],
+    ['Cat6A Shielded Patch Panels', 8, 75.00, 60.00, 600.00],
+    ['', '', '', '', ''],
+    ['', '', '', 'Subtotal:', 2900.00],
+    ['', '', '', 'Tax Amount (10%):', 290.00],
+    ['', '', '', 'TOTAL AMOUNT DUE ($):', 3190.00],
+    ['Payment Terms: Net 30 Days', '', '', 'Currency:', 'USD'],
+  ];
+  const xlsxWs = XLSX.utils.aoa_to_sheet(xlsxData);
+  XLSX.utils.book_append_sheet(xlsxWb, xlsxWs, 'Invoice');
+  XLSX.writeFile(xlsxWb, path.join(SAMPLE_DIR, 'sample_invoice_sheet.xlsx'), { bookType: 'xlsx' });
+
+  // 6. Sample CSV Vendor Transaction Ledger (.csv)
+  const csvContent = [
+    'Invoice Number,Vendor,Customer,Invoice Date,Due Date,Item Description,Quantity,Unit Price,Line Total,Tax Amount,Currency',
+    'INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Managed Kubernetes Cluster Nodes,3,800.00,2400.00,240.00,USD',
+    'INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Continuous Deployment CI/CD Runner,2,300.00,600.00,60.00,USD',
+    'INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Cloud Security & WAF Monitoring,1,500.00,500.00,50.00,USD',
+  ].join('\n');
+  fs.writeFileSync(path.join(SAMPLE_DIR, 'sample_vendor_ledger.csv'), csvContent, 'utf8');
+
+  // 7. Sample Macro-Enabled Excel Invoice (.xlsm)
+  const xlsmWb = XLSX.utils.book_new();
+  const xlsmData = [
+    ['MACRO COMMERCIAL INVOICE', '', '', '', ''],
+    ['Invoice Number:', 'INV-2026-MACRO99', '', 'Date:', '2026-11-12'],
+    ['Vendor:', 'Industrial Automation Systems', '', 'Due Date:', '2026-12-12'],
+    ['Customer:', 'Advanced Robotics Group', '', 'Currency:', 'USD'],
+    ['', '', '', '', ''],
+    ['Description', 'Quantity', 'Unit Price', 'Total'],
+    ['Programmable Logic Controller (PLC)', 2, 850.00, 1700.00],
+    ['Industrial Ethernet Gateway', 4, 175.00, 700.00],
+    ['High-Precision Proximity Sensors', 10, 45.00, 450.00],
+    ['', '', '', ''],
+    ['', '', 'Subtotal:', 2850.00],
+    ['', '', 'Tax (8%):', 228.00],
+    ['', '', 'TOTAL AMOUNT:', 3078.00],
+  ];
+  const xlsmWs = XLSX.utils.aoa_to_sheet(xlsmData);
+  XLSX.utils.book_append_sheet(xlsmWb, xlsmWs, 'CommercialInvoice');
+  XLSX.writeFile(xlsmWb, path.join(SAMPLE_DIR, 'sample_macro_invoice.xlsm'), { bookType: 'xlsm' });
+
+  console.log('✅ Generated 4 PDFs and 3 Spreadsheet sample files (XLSX, CSV, XLSM)');
 }
 
 main().catch(console.error);
