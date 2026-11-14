@@ -48,11 +48,17 @@ lerna-debug.log*
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.vs/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.user
+
+# Build & Compilation Artefacts
+bin/
+obj/
 
 # Testing & Coverage
 coverage/
