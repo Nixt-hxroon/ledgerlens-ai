@@ -100,11 +100,10 @@ export const CrossDocumentAnalysis = () => {
       {/* Overview Banner */}
       <div className="bg-white p-6 rounded-3xl border border-zinc-200/70 shadow-soft">
         <h1 className="text-xl font-extrabold text-zinc-950 tracking-tight">
-          Cross-Document Intelligence & Reconciliation
+          Cross-Document Intelligence & Agentic 3-Way Reconciliation
         </h1>
         <p className="text-xs text-zinc-500 mt-1 max-w-2xl leading-relaxed">
-          Compare Vendor Invoices against authorized Purchase Orders. LedgerLens AI detects unit price
-          variances, unbilled quantities, and vendor mismatches deterministically before payment authorization.
+          Compare Vendor Invoices against authorized Purchase Orders. LedgerLens AI semantically matches line items, audits unit rate variances, flags unbilled quantities, and delivers an executive settlement recommendation powered by Gemini AI.
         </p>
       </div>
 
@@ -197,9 +196,16 @@ export const CrossDocumentAnalysis = () => {
               </Badge>
             </div>
 
-            <p className="text-sm font-semibold text-zinc-100 leading-relaxed mb-4">
+            <p className="text-sm font-semibold text-zinc-100 leading-relaxed mb-3">
               {summary.explanation}
             </p>
+
+            {summary.settlement_recommendation && (
+              <div className="mb-4 p-3 rounded-2xl bg-white/10 border border-white/15 text-xs text-zinc-200 flex items-start gap-2">
+                <span className="font-bold text-amber-300 shrink-0">💡 Settlement Plan:</span>
+                <span>{summary.settlement_recommendation}</span>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-zinc-800 text-xs">
               <div>

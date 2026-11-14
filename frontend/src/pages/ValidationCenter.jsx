@@ -73,15 +73,14 @@ export const ValidationCenter = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold text-zinc-950 tracking-tight">
-                Document Validation Center
+                Agentic Validation & Forensic Audit Center
               </h1>
               <span className="px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-700 text-xs font-bold">
                 {issues.length} Open Anomaly Alerts
               </span>
             </div>
             <p className="text-xs text-zinc-500 mt-1 max-w-2xl leading-relaxed">
-              Deterministic mathematical checks, duplicate detection, and date chronology validations.
-              LedgerLens AI flags discrepancies programmatically without relying on LLM arithmetic.
+              Autonomous forensic document evaluation powered by Gemini AI. LedgerLens AI inspects documents across financial arithmetic, contractual payment terms, risk and fraud anomalies, and corporate compliance standards.
             </p>
           </div>
 
@@ -169,6 +168,13 @@ export const ValidationCenter = () => {
                         Expected: <span className="font-bold">{issue.expected_value}</span>
                       </div>
                     </div>
+
+                    {issue.recommendation && (
+                      <div className="mt-2 text-xs bg-amber-50 text-amber-900 border border-amber-200/70 rounded-xl p-2.5 flex items-start gap-2">
+                        <span className="font-bold shrink-0">💡 Recommendation:</span>
+                        <span>{issue.recommendation}</span>
+                      </div>
+                    )}
 
                     <p className="text-[11px] text-zinc-400 pt-0.5">
                       Origin file:{' '}

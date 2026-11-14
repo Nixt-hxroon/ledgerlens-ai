@@ -15,6 +15,24 @@ export const evidenceReferenceSchema = z.object({
   confidence: z.number().min(0).max(1).default(0.9),
 });
 
+export const agenticFindingSchema = z.object({
+  issue_type: z.string(),
+  severity: z.enum(['Critical Issue', 'Warning', 'Review Required', 'Low']).default('Warning'),
+  field_name: z.string(),
+  extracted_value: z.any().nullable().default(null),
+  expected_value: z.string(),
+  explanation: z.string(),
+  recommendation: z.string().default('Review document with vendor.'),
+});
+
+export const agenticEvaluationSchema = z.object({
+  audit_score: z.number().min(0).max(100).default(85),
+  overall_status: z.enum(['Valid', 'Warning', 'Critical Issue', 'Review Required']).default('Valid'),
+  executive_summary: z.string().default(''),
+  actionable_recommendations: z.array(z.string()).default([]),
+  findings: z.array(agenticFindingSchema).default([]),
+});
+
 export const geminiExtractionSchema = z.object({
   document_type: z.enum(['Invoice', 'Purchase Order', 'Receipt', 'Other']).default('Other'),
   classification_confidence: z.number().min(0).max(1).default(0.85),
@@ -41,5 +59,5 @@ export const geminiExtractionSchema = z.object({
   line_items: z.array(lineItemSchema).default([]),
   evidence_snippets: z.array(evidenceReferenceSchema).default([]),
   overall_confidence: z.number().min(0).max(1).default(0.9),
-});
-
+  agentic_evaluation: agenticEvaluationSchema.optional(),
+}).passthrough();

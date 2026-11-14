@@ -20,12 +20,14 @@ export const insightsController = {
         if (ext) userExtractions.push(ext);
       }
       const validationIssues = await db.validationIssues.findByUserId(req.user.id, {});
+      const userMatches = await db.documentMatches.findByUserId(req.user.id);
 
       const answerData = await geminiService.answerUserQuestion({
         question,
         userDocuments: documents,
         userExtractions,
         userValidationIssues: validationIssues,
+        userMatches: userMatches || [],
       });
 
       return successResponse(res, answerData);

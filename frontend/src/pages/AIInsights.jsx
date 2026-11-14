@@ -31,6 +31,7 @@ const EXAMPLE_QUESTIONS = [
 export const AIInsights = () => {
   const [report, setReport] = useState(null);
   const [loadingReport, setLoadingReport] = useState(true);
+  const [suggestedPrompts, setSuggestedPrompts] = useState(EXAMPLE_QUESTIONS);
 
   // Chat Q&A State
   const [question, setQuestion] = useState('');
@@ -80,6 +81,9 @@ export const AIInsights = () => {
           facts: res.groundedFacts,
         },
       ]);
+      if (res.suggestedFollowUps && res.suggestedFollowUps.length > 0) {
+        setSuggestedPrompts(res.suggestedFollowUps);
+      }
     } catch (err) {
       toast.error('AI query error: ' + err.message);
       setConversation((prev) => [
@@ -234,7 +238,7 @@ export const AIInsights = () => {
                 </div>
               </div>
               <Badge variant="ghost" size="sm">
-                Gemini 2.0
+                Gemini 3.5 Flash (Agentic)
               </Badge>
             </div>
 
@@ -284,10 +288,10 @@ export const AIInsights = () => {
             {/* Suggested Question Chips */}
             <div className="pt-2 pb-3 border-t border-zinc-100">
               <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
-                Suggested Prompts
+                Agentic Suggested Prompts & Follow-Ups
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {EXAMPLE_QUESTIONS.map((eq, idx) => (
+                {suggestedPrompts.map((eq, idx) => (
                   <button
                     key={idx}
                     type="button"

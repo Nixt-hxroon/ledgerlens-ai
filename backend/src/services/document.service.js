@@ -114,7 +114,7 @@ export const documentService = {
     }));
     await db.lineItems.createMany(lineItemsToInsert);
 
-    // 6. Run deterministic validation engine
+    // 6. Run Autonomous Agentic Gemini LLM Forensic Evaluation suite
     const updatedDoc = await db.documents.findById(documentId, userId);
     await validationService.runValidation({
       document: updatedDoc,
