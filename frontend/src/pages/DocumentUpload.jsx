@@ -11,6 +11,7 @@ import {
   Layers,
   FileCheck,
   RefreshCw,
+  Receipt,
 } from 'lucide-react';
 import { documentService } from '../services/documentService';
 import { useToast } from '../context/ToastContext';
@@ -20,6 +21,12 @@ import { Badge } from '../components/common/Badge';
 import { formatFileSize } from '../utils/formatters';
 
 const DEMO_SAMPLES = [
+  {
+    name: 'customers-100.csv',
+    title: 'Customer Directory & Accounts (.csv)',
+    desc: '100 client subscription accounts parsed all in one consolidated master invoice',
+    category: 'All-in-One (CSV)',
+  },
   {
     name: 'sample_invoice_sheet.xlsx',
     title: 'Excel Commercial Invoice (.xlsx)',
@@ -79,9 +86,11 @@ export const DocumentUpload = () => {
 
     const newItems = [];
     for (const file of incomingFiles) {
-      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-      if (!allowedExtensions.includes(ext)) {
-        toast.error(`"${file.name}" has an unsupported format. Please upload PDF, PNG, JPG, CSV, XLSX, or XLSM.`);
+      const ext = file.name.includes('.') ? '.' + file.name.split('.').pop().toLowerCase() : '';
+      const isCsv = ext === '.csv' || file.type === 'text/csv' || file.type?.includes('csv') || file.name.toLowerCase().endsWith('.csv');
+      const isAllowed = isCsv || allowedExtensions.includes(ext);
+      if (!isAllowed) {
+        toast.error(`"${file.name}" has an unsupported format. Please upload CSV, Excel (.xlsx, .xlsm), PDF, or JPG/PNG.`);
         continue;
       }
       if (file.size > maxBytes) {
@@ -94,7 +103,7 @@ export const DocumentUpload = () => {
         file,
         name: file.name,
         size: file.size,
-        type: file.type || ext,
+        type: isCsv ? 'text/csv' : (file.type || ext),
         progress: 0,
         status: 'Ready', // 'Ready' | 'Uploading' | 'Analyzing' | 'Completed' | 'Error'
         documentId: null,
@@ -261,7 +270,7 @@ export const DocumentUpload = () => {
           ref={fileInputRef}
           onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))}
           multiple
-          accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xlsm"
+          accept=".csv,text/csv,application/vnd.ms-excel,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsm,application/vnd.ms-excel.sheet.macroEnabled.12,.pdf,application/pdf,image/png,image/jpeg,image/jpg"
           className="hidden"
         />
 
@@ -379,17 +388,27 @@ export const DocumentUpload = () => {
               <div>
                 <p className="text-xs font-bold text-zinc-900">Documents Ingested & Evaluated</p>
                 <p className="text-[11px] text-zinc-500">
-                  Arrange all your uploaded documents and inspect each document's formal invoice.
+                  Inspect the unified All-in-One Master Commercial Statement or browse arranged invoices.
                 </p>
               </div>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => navigate('/documents?view=invoices')}
-                icon={ArrowRight}
-              >
-                Arrange Documents & View Invoices →
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/documents?view=invoices')}
+                  icon={Receipt}
+                >
+                  Individual Invoices
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate('/documents?view=consolidated')}
+                  icon={Layers}
+                >
+                  All-in-One Master Invoice →
+                </Button>
+              </div>
             </div>
           )}
         </Card>

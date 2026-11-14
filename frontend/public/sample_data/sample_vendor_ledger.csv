@@ -1,0 +1,4 @@
+Invoice Number,Vendor,Customer,Invoice Date,Due Date,Item Description,Quantity,Unit Price,Line Total,Tax Amount,Currency
+INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Managed Kubernetes Cluster Nodes,3,800.00,2400.00,240.00,USD
+INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Continuous Deployment CI/CD Runner,2,300.00,600.00,60.00,USD
+INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Cloud Security & WAF Monitoring,1,500.00,500.00,50.00,USD

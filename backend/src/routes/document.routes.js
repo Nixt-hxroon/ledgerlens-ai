@@ -11,6 +11,7 @@ router.use(requireAuth);
 router.post('/', uploadSingle, documentController.uploadSingle);
 router.post('/batch', uploadMultiple, documentController.uploadBatch);
 router.get('/', documentController.getDocuments);
+router.get('/invoices/consolidated', documentController.getConsolidatedInvoice);
 router.get('/invoices/arranged', documentController.getArrangedInvoices);
 router.get('/:id', documentController.getDocumentById);
 router.get('/:id/file', documentController.getDocumentFile);

@@ -295,5 +295,21 @@ export const documentController = {
       next(err);
     }
   },
+
+  /**
+   * Get All-in-One master consolidated commercial invoice
+   */
+  async getConsolidatedInvoice(req, res, next) {
+    try {
+      const { ids } = req.query;
+      const consolidated = await documentService.getConsolidatedInvoice(
+        req.user.id,
+        ids ? ids.split(',').filter(Boolean) : null
+      );
+      return successResponse(res, consolidated, 'All-in-one consolidated master invoice generated.');
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 

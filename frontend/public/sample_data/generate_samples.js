@@ -1,0 +1,204 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import XLSX from 'xlsx';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const SAMPLE_DIR = path.resolve(__dirname);
+
+async function createPdfFile(filename, title, lines) {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const page = pdfDoc.addPage([612, 792]);
+  const { width, height } = page.getSize();
+
+  // Draw header bar
+  page.drawRectangle({
+    x: 40,
+    y: height - 80,
+    width: width - 80,
+    height: 40,
+    color: rgb(0.08, 0.08, 0.09),
+  });
+
+  page.drawText(title, {
+    x: 55,
+    y: height - 65,
+    size: 16,
+    font: boldFont,
+    color: rgb(1, 1, 1),
+  });
+
+  let currentY = height - 110;
+  for (const line of lines) {
+    if (line.startsWith('==') || line.startsWith('--')) {
+      page.drawLine({
+        start: { x: 40, y: currentY + 5 },
+        end: { x: width - 40, y: currentY + 5 },
+        thickness: line.startsWith('==') ? 1.5 : 0.75,
+        color: rgb(0.8, 0.8, 0.8),
+      });
+      currentY -= 15;
+    } else {
+      const isHeader = line.includes(':') && (line.startsWith('INVOICE') || line.startsWith('PURCHASE ORDER') || line.startsWith('RECEIPT') || line.startsWith('TOTAL') || line.startsWith('LINE ITEMS'));
+      page.drawText(line, {
+        x: 45,
+        y: currentY,
+        size: isHeader ? 11 : 10,
+        font: isHeader ? boldFont : font,
+        color: line.startsWith('TOTAL') ? rgb(0.1, 0.5, 0.2) : rgb(0.15, 0.15, 0.15),
+      });
+      currentY -= 18;
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  fs.writeFileSync(path.join(SAMPLE_DIR, filename), pdfBytes);
+}
+
+async function main() {
+  // 1. Valid Invoice
+  await createPdfFile('sample_invoice_valid.pdf', 'COMMERCIAL TAX INVOICE', [
+    'Vendor: Apex Cloud Systems Inc.',
+    'Address: 100 Innovation Way, Suite 400, San Francisco, CA',
+    'Email: billing@apexcloud.io',
+    '----------------------------------------',
+    'Invoice Number: INV-2026-8812',
+    'Invoice Date: 2026-11-01',
+    'Due Date: 2026-12-01',
+    'PO Reference: PO-2026-9041',
+    '----------------------------------------',
+    'Bill To: Enterprise Client Holdings Ltd.',
+    'Address: 450 Global Corporate Blvd, New York, NY',
+    '========================================',
+    'LINE ITEMS:',
+    '1. Enterprise Cloud Compute Cluster - Qty: 2 @ $1,000.00 = $2,000.00',
+    '2. Managed Premium Support - Qty: 1 @ $500.00 = $500.00',
+    '----------------------------------------',
+    'Subtotal: $2,500.00',
+    'Tax (10%): $250.00',
+    'Discount: $0.00',
+    'TOTAL AMOUNT DUE: $2,750.00 USD',
+    'Payment Terms: Net 30 Days',
+    'Payment Status: Pending',
+  ]);
+
+  // 2. Matching PO
+  await createPdfFile('sample_purchase_order.pdf', 'OFFICIAL PURCHASE ORDER', [
+    'PO Number: PO-2026-9041',
+    'Order Date: 2026-10-28',
+    'Expected Delivery: 2026-11-05',
+    '----------------------------------------',
+    'Supplier / Vendor: Apex Cloud Systems Inc.',
+    'Buyer: Enterprise Client Holdings Ltd.',
+    '========================================',
+    'ORDERED ITEMS:',
+    '1. Enterprise Cloud Compute Cluster - Qty: 2 @ $1,000.00 = $2,000.00',
+    '2. Managed Premium Support - Qty: 1 @ $500.00 = $500.00',
+    '----------------------------------------',
+    'Subtotal: $2,500.00',
+    'Estimated Tax: $250.00',
+    'TOTAL ORDER VALUE: $2,750.00 USD',
+    'Terms: Net 30 upon delivery confirmation',
+  ]);
+
+  // 3. Invoice with Arithmetic / Price Discrepancy
+  await createPdfFile('sample_invoice_discrepancy.pdf', 'INVOICE (AUDIT REVIEW)', [
+    'Vendor: Apex Cloud Systems Inc.',
+    'Invoice Number: INV-2026-9905',
+    'Invoice Date: 2026-11-10',
+    'Due Date: 2026-10-15', // Due date error!
+    'PO Reference: PO-2026-9041',
+    '----------------------------------------',
+    'Bill To: Enterprise Client Holdings Ltd.',
+    '========================================',
+    'LINE ITEMS:',
+    '1. Enterprise Cloud Compute Cluster - Qty: 2 @ $1,500.00 = $3,000.00',
+    '2. Unscheduled Maintenance Surcharge - Qty: 1 @ $1,000.00 = $1,000.00',
+    '----------------------------------------',
+    'Subtotal: $4,000.00',
+    'Tax (10%): $400.00',
+    'Discount: $0.00',
+    'TOTAL AMOUNT DUE: $5,200.00 USD', // Calculation error: 4000+400 != 5200!
+    'Payment Status: Pending',
+  ]);
+
+  // 4. Sample Receipt
+  await createPdfFile('sample_receipt.pdf', 'STORE TRANSACTION RECEIPT', [
+    'Merchant: TechCity Office Depot',
+    'Store #0482 - San Francisco, CA',
+    '========================================',
+    'Receipt #: RCP-77412',
+    'Date: 2026-11-12',
+    'Cashier: Alex M.',
+    '----------------------------------------',
+    '1. Ergonomic USB-C Docking Hub - $129.99',
+    '2. Ultra-Speed HDMI 2.1 Cable - $29.99',
+    '3. Wireless Presentation Remote - $19.99',
+    '----------------------------------------',
+    'Subtotal: $179.97',
+    'Tax (8.5%): $15.30',
+    'TOTAL PAID: $195.27 USD',
+    'Payment Method: Visa ending in 4022',
+  ]);
+
+  // 5. Sample Excel Commercial Invoice (.xlsx)
+  const xlsxWb = XLSX.utils.book_new();
+  const xlsxData = [
+    ['COMMERCIAL INVOICE', '', '', '', ''],
+    ['Invoice Number:', 'INV-2026-XLS88', '', 'Invoice Date:', '2026-11-14'],
+    ['Vendor / Supplier:', 'Nordic Logistics & Supplies', '', 'Payment Due Date:', '2026-12-14'],
+    ['Billed To (Customer):', 'Enterprise Operations Inc.', '', 'PO Reference:', 'PO-2026-9041'],
+    ['', '', '', '', ''],
+    ['Item Description', 'Quantity', 'Unit Price ($)', 'Tax Amount ($)', 'Line Total ($)'],
+    ['High-Density Server Racks', 4, 450.00, 180.00, 1800.00],
+    ['Fiber Optic Interconnect Cables (10m)', 20, 25.00, 50.00, 500.00],
+    ['Cat6A Shielded Patch Panels', 8, 75.00, 60.00, 600.00],
+    ['', '', '', '', ''],
+    ['', '', '', 'Subtotal:', 2900.00],
+    ['', '', '', 'Tax Amount (10%):', 290.00],
+    ['', '', '', 'TOTAL AMOUNT DUE ($):', 3190.00],
+    ['Payment Terms: Net 30 Days', '', '', 'Currency:', 'USD'],
+  ];
+  const xlsxWs = XLSX.utils.aoa_to_sheet(xlsxData);
+  XLSX.utils.book_append_sheet(xlsxWb, xlsxWs, 'Invoice');
+  XLSX.writeFile(xlsxWb, path.join(SAMPLE_DIR, 'sample_invoice_sheet.xlsx'), { bookType: 'xlsx' });
+
+  // 6. Sample CSV Vendor Transaction Ledger (.csv)
+  const csvContent = [
+    'Invoice Number,Vendor,Customer,Invoice Date,Due Date,Item Description,Quantity,Unit Price,Line Total,Tax Amount,Currency',
+    'INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Managed Kubernetes Cluster Nodes,3,800.00,2400.00,240.00,USD',
+    'INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Continuous Deployment CI/CD Runner,2,300.00,600.00,60.00,USD',
+    'INV-2026-CSV12,Global Tech Solutions,Enterprise Client Holdings Ltd.,2026-11-10,2026-12-10,Cloud Security & WAF Monitoring,1,500.00,500.00,50.00,USD',
+  ].join('\n');
+  fs.writeFileSync(path.join(SAMPLE_DIR, 'sample_vendor_ledger.csv'), csvContent, 'utf8');
+
+  // 7. Sample Macro-Enabled Excel Invoice (.xlsm)
+  const xlsmWb = XLSX.utils.book_new();
+  const xlsmData = [
+    ['MACRO COMMERCIAL INVOICE', '', '', '', ''],
+    ['Invoice Number:', 'INV-2026-MACRO99', '', 'Date:', '2026-11-12'],
+    ['Vendor:', 'Industrial Automation Systems', '', 'Due Date:', '2026-12-12'],
+    ['Customer:', 'Advanced Robotics Group', '', 'Currency:', 'USD'],
+    ['', '', '', '', ''],
+    ['Description', 'Quantity', 'Unit Price', 'Total'],
+    ['Programmable Logic Controller (PLC)', 2, 850.00, 1700.00],
+    ['Industrial Ethernet Gateway', 4, 175.00, 700.00],
+    ['High-Precision Proximity Sensors', 10, 45.00, 450.00],
+    ['', '', '', ''],
+    ['', '', 'Subtotal:', 2850.00],
+    ['', '', 'Tax (8%):', 228.00],
+    ['', '', 'TOTAL AMOUNT:', 3078.00],
+  ];
+  const xlsmWs = XLSX.utils.aoa_to_sheet(xlsmData);
+  XLSX.utils.book_append_sheet(xlsmWb, xlsmWs, 'CommercialInvoice');
+  XLSX.writeFile(xlsmWb, path.join(SAMPLE_DIR, 'sample_macro_invoice.xlsm'), { bookType: 'xlsm' });
+
+  console.log('✅ Generated 4 PDFs and 3 Spreadsheet sample files (XLSX, CSV, XLSM)');
+}
+
+main().catch(console.error);

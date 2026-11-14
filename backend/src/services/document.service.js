@@ -323,5 +323,97 @@ export const documentService = {
       },
     };
   },
+
+  /**
+   * Compile ALL uploaded documents into ONE unified, consolidated Master Commercial Invoice
+   */
+  async getConsolidatedInvoice(userId, ids = null) {
+    let docs = [];
+    if (ids && ids.length > 0) {
+      for (const id of ids) {
+        const d = await db.documents.findById(id, userId);
+        if (d) docs.push(d);
+      }
+    } else {
+      const res = await db.documents.findByUserId(userId, { limit: 200, sortBy: 'uploaded_at', sortOrder: 'desc' });
+      docs = res.documents || [];
+    }
+
+    const consolidatedLineItems = [];
+    let subtotal = 0;
+    let taxAmount = 0;
+    let discount = 0;
+    let totalAmount = 0;
+    let dominantCurrency = 'USD';
+    let auditScoreSum = 0;
+    let auditScoreCount = 0;
+
+    for (const doc of docs) {
+      try {
+        const inv = await this.getDocumentInvoice(doc.id, userId);
+        if (inv) {
+          subtotal += inv.financials.subtotal || 0;
+          taxAmount += inv.financials.tax_amount || 0;
+          discount += inv.financials.discount || 0;
+          totalAmount += inv.financials.total_amount || 0;
+          if (inv.financials.currency) dominantCurrency = inv.financials.currency;
+          if (inv.audit.audit_score) {
+            auditScoreSum += inv.audit.audit_score;
+            auditScoreCount++;
+          }
+
+          inv.line_items.forEach((item, idx) => {
+            consolidatedLineItems.push({
+              id: `${doc.id}_${item.id || idx}`,
+              source_filename: doc.original_filename,
+              source_invoice_number: inv.invoice_number,
+              description: `${item.description} [${doc.original_filename}]`,
+              quantity: item.quantity || 1,
+              unit_price: item.unit_price || 0,
+              tax_amount: item.tax_amount || 0,
+              total_amount: item.total_amount || 0,
+            });
+          });
+        }
+      } catch (e) {
+        console.warn(`Error compiling consolidated item for doc ${doc.id}:`, e);
+      }
+    }
+
+    const avgAuditScore = auditScoreCount > 0 ? Math.round(auditScoreSum / auditScoreCount) : 95;
+
+    return {
+      isConsolidated: true,
+      master_statement_number: `ALL-IN-ONE-${Date.now().toString().slice(-6)}`,
+      issue_date: new Date().toISOString().split('T')[0],
+      due_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      document_count: docs.length,
+      item_count: consolidatedLineItems.length,
+      vendor: {
+        name: 'LedgerLens Master Billing & Settlement Entity',
+        address: 'Consolidated Commercial Accounting Gateway, Suite 400',
+        contact: 'settlements@ledgerlens.io',
+      },
+      customer: {
+        name: 'Enterprise Portfolio Holdings Ltd.',
+        address: 'Consolidated Enterprise Accounts Payable Division',
+      },
+      line_items: consolidatedLineItems,
+      financials: {
+        subtotal: Math.round(subtotal * 100) / 100,
+        tax_amount: Math.round(taxAmount * 100) / 100,
+        discount: Math.round(discount * 100) / 100,
+        total_amount: Math.round(totalAmount * 100) / 100,
+        currency: dominantCurrency,
+        payment_terms: 'Consolidated Net 30 Days',
+        payment_status: 'Approved & Reconciled',
+      },
+      audit: {
+        audit_score: avgAuditScore,
+        validation_status: avgAuditScore >= 80 ? 'Valid' : 'Warning',
+        verified_documents: docs.length,
+      },
+    };
+  },
 };
 

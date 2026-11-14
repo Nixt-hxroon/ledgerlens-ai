@@ -76,5 +76,10 @@ export const documentService = {
     const res = await api.get('/documents/invoices/arranged', { params });
     return res.data;
   },
+
+  async getConsolidatedInvoice(params = {}) {
+    const res = await api.get('/documents/invoices/consolidated', { params });
+    return res.data;
+  },
 };
 
