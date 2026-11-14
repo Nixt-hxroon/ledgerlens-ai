@@ -19,3 +19,4 @@ export const getGeminiModel = (modelName = config.gemini.model) => {
 };
 
 export { genAI };
+

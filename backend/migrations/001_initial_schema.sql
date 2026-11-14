@@ -171,3 +171,4 @@ ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
 
 -- Note: RLS policies when accessed via Supabase Client with Auth:
 -- Service role bypasses RLS on the backend, ensuring backend maintains strict authorization middleware.
+

@@ -331,3 +331,4 @@ export const AIInsights = () => {
     </div>
   );
 };
+

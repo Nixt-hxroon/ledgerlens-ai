@@ -29,3 +29,4 @@ export const uploadMultiple = multer({
   },
   fileFilter,
 }).array('files', 10);
+

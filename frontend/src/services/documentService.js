@@ -62,3 +62,4 @@ export const documentService = {
     return res.data;
   },
 };
+

@@ -663,3 +663,4 @@ export const DocumentDetails = () => {
     </div>
   );
 };
+

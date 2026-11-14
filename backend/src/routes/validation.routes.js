@@ -12,3 +12,4 @@ router.post('/:id/review', validationController.reviewDocument);
 router.patch('/issue/:id', validationController.updateIssueStatus);
 
 export default router;
+

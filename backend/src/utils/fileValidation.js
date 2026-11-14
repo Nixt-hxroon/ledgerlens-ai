@@ -35,3 +35,4 @@ export const validateFileMetadata = (file) => {
 
   return { valid: true };
 };
+

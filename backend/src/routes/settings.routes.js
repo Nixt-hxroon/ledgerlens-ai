@@ -11,3 +11,4 @@ router.patch('/profile', settingsController.updateProfile);
 router.post('/change-password', settingsController.changePassword);
 
 export default router;
+

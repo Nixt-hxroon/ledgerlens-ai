@@ -19,3 +19,4 @@ router.patch('/:id', documentController.updateExtractedData);
 router.delete('/:id', documentController.deleteDocument);
 
 export default router;
+

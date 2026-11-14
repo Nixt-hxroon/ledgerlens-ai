@@ -12,3 +12,4 @@ router.get('/vendors', analyticsController.getVendors);
 router.get('/documents', analyticsController.getDocuments);
 
 export default router;
+

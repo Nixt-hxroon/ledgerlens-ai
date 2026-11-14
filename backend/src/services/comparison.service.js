@@ -236,3 +236,4 @@ export const comparisonService = {
     return candidates.sort((a, b) => b.relevance_score - a.relevance_score);
   },
 };
+

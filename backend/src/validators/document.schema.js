@@ -37,3 +37,4 @@ export const compareDocumentsSchema = z.object({
   invoice_id: z.string().uuid('Valid invoice ID required'),
   purchase_order_id: z.string().uuid('Valid purchase order ID required'),
 });
+

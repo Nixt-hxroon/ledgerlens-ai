@@ -57,3 +57,4 @@ export const getStatusBadgeStyle = (status) => {
       return 'bg-zinc-100 text-zinc-700 border-zinc-200';
   }
 };
+

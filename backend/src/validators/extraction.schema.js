@@ -42,3 +42,4 @@ export const geminiExtractionSchema = z.object({
   evidence_snippets: z.array(evidenceReferenceSchema).default([]),
   overall_confidence: z.number().min(0).max(1).default(0.9),
 });
+

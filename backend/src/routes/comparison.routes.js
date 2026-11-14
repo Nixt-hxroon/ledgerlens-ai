@@ -12,3 +12,4 @@ router.get('/candidates', comparisonController.getCandidates);
 router.get('/:id', comparisonController.getComparisonById);
 
 export default router;
+

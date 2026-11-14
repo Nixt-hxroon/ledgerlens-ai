@@ -378,3 +378,4 @@ The test suite validates:
 ## 13. License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+

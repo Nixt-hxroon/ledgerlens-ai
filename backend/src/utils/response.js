@@ -13,3 +13,4 @@ export const errorResponse = (res, message = 'Internal Server Error', statusCode
     errors,
   });
 };
+

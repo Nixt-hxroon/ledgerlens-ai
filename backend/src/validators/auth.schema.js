@@ -25,3 +25,4 @@ export const updateProfileSchema = z.object({
   currentPassword: z.string().optional(),
   newPassword: z.string().min(6).optional(),
 });
+

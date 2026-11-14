@@ -14,3 +14,4 @@ if (config.supabase.isConfigured) {
 }
 
 export const supabase = supabaseClient;
+

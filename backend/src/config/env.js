@@ -63,3 +63,4 @@ export function validateEnvironment() {
     console.log('⚡ [Supabase]: Configured with endpoint', config.supabase.url);
   }
 }
+

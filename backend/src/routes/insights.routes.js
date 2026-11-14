@@ -11,3 +11,4 @@ router.get('/reports', insightsController.getReport);
 router.get('/export-csv', insightsController.exportCSV);
 
 export default router;
+
