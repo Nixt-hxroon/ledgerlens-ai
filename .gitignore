@@ -32,6 +32,7 @@ uploads/
 backend/uploads/
 data/
 backend/data/
+*.traineddata
 *.sqlite
 *.sqlite3
 *.db
