@@ -13,7 +13,8 @@ export const insightService = {
 
   getExportCSVUrl() {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
-    return `${baseUrl}/insights/export-csv`;
+    const token = localStorage.getItem('ledgerlens_access_token');
+    return `${baseUrl}/insights/export-csv${token ? `?token=${token}` : ''}`;
   },
 };
 

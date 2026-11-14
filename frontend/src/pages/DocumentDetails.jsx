@@ -143,7 +143,9 @@ export const DocumentDetails = () => {
 
   const { document, extractedData, lineItems, validationIssues, reviews, fileUrl } = docDetails;
   const isPdf = document.mime_type === 'application/pdf';
-  const rawFileUrl = `http://localhost:5000/api/documents/${document.id}/file`;
+  const token = localStorage.getItem('ledgerlens_access_token');
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
+  const rawFileUrl = `${apiBase}/documents/${document.id}/file${token ? `?token=${token}` : ''}`;
 
   const evidenceSnippets = extractedData?.extracted_json?.evidence_snippets || [];
   const characteristics = extractedData?.extracted_json?.document_characteristics || [];

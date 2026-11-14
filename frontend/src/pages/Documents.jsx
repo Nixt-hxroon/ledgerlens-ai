@@ -239,7 +239,7 @@ export const Documents = () => {
                           <RefreshCw className="w-3.5 h-3.5" />
                         </button>
                         <a
-                          href={`http://localhost:5000/api/documents/${doc.id}/file`}
+                          href={`${import.meta.env.VITE_API_BASE_URL || '/api'}/documents/${doc.id}/file${localStorage.getItem('ledgerlens_access_token') ? `?token=${localStorage.getItem('ledgerlens_access_token')}` : ''}`}
                           target="_blank"
                           rel="noreferrer"
                           title="Download Document"
