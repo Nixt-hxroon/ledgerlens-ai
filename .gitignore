@@ -1,34 +1,73 @@
+# ==========================================
+# LedgerLens AI — Production .gitignore
+# ==========================================
+
 # Dependencies
 node_modules/
 */node_modules/
+.pnp
+.pnp.js
 
-# Environment variables
+# Environment Variables & Secrets
 .env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
 .env.*.local
+*.env
 backend/.env
 frontend/.env
+frontend/.env.local
 
-# Build outputs
+# Production Build Outputs
 dist/
 build/
+out/
 */dist/
+*/build/
 
-# Local data & uploads
+# Local Uploads & Document Storage
 uploads/
 backend/uploads/
 data/
 backend/data/
 *.sqlite
 *.sqlite3
+*.db
 
-# Logs
+# Logs & Diagnostics
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 *.log
 
-# OS metadata
-.DS_Store
-Thumbs.db
+# Editor & IDE Directories
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
+# Testing & Coverage
+coverage/
+.nyc_output/
+
+# Operating System Metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
