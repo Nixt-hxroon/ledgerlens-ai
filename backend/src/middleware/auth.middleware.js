@@ -31,7 +31,8 @@ export const requireAuth = async (req, res, next) => {
       throw new AppError('Invalid authentication token.', 401);
     }
 
-    const user = await db.users.findById(decoded.userId);
+    const userId = decoded.userId || decoded.id;
+    const user = await db.users.findById(userId);
     if (!user) {
       throw new AppError('User account associated with this token no longer exists.', 401);
     }

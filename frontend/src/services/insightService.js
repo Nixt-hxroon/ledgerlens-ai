@@ -12,7 +12,10 @@ export const insightService = {
   },
 
   getExportCSVUrl() {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+    const rawBase = import.meta.env.VITE_API_BASE_URL || '/api';
+    const baseUrl = (rawBase.startsWith('http') && typeof window !== 'undefined' && window.location.origin !== new URL(rawBase).origin)
+      ? '/api'
+      : rawBase;
     const token = localStorage.getItem('ledgerlens_access_token');
     return `${baseUrl}/insights/export-csv${token ? `?token=${token}` : ''}`;
   },

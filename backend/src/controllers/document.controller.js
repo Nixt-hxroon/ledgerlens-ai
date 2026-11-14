@@ -132,6 +132,9 @@ export const documentController = {
         throw new AppError('Document file content is not accessible.', 404);
       }
 
+      res.removeHeader('X-Frame-Options');
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Content-Type', doc.mime_type);
       res.setHeader('Content-Disposition', `inline; filename="${doc.original_filename}"`);
       return res.send(buffer);

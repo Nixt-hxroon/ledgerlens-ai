@@ -19,6 +19,9 @@ const app = express();
 // Security headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false,
+  frameguard: false, // Allow iframe embedding for document viewer previewer
+  contentSecurityPolicy: false, // Allow document previews across origins
 }));
 
 // CORS Configuration

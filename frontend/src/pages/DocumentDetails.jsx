@@ -145,7 +145,11 @@ export const DocumentDetails = () => {
   const isPdf = document.mime_type === 'application/pdf';
   const token = localStorage.getItem('ledgerlens_access_token');
   const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
-  const rawFileUrl = `${apiBase}/documents/${document.id}/file${token ? `?token=${token}` : ''}`;
+  // Ensure same-origin relative URL for iframes to prevent Mixed-Content and cross-origin blocking
+  const normalizedApiBase = (apiBase.startsWith('http') && typeof window !== 'undefined' && window.location.origin !== new URL(apiBase).origin)
+    ? '/api'
+    : apiBase;
+  const rawFileUrl = `${normalizedApiBase}/documents/${document.id}/file${token ? `?token=${token}` : ''}`;
 
   const evidenceSnippets = extractedData?.extracted_json?.evidence_snippets || [];
   const characteristics = extractedData?.extracted_json?.document_characteristics || [];
