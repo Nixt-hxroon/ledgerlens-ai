@@ -1,0 +1,21 @@
+{
+  "name": "ledgerlens-ai-root",
+  "version": "1.0.0",
+  "description": "LedgerLens AI — From Documents to Decisions: Intelligent Document Processing Platform",
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "test:backend": "cd backend && node tests/api.test.js"
+  },
+  "keywords": [
+    "intelligent-document-processing",
+    "idp",
+    "gemini",
+    "supabase",
+    "full-stack"
+  ],
+  "author": "LedgerLens AI Team",
+  "license": "MIT"
+}
