@@ -51,6 +51,28 @@ function writeLocalDB(data) {
   }
 }
 
+let warnedMissingTables = false;
+function isTableMissingError(error) {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  const isMissing =
+    error.code === 'PGRST205' ||
+    error.code === 'PGRST204' ||
+    error.code === '42P01' ||
+    msg.includes('schema cache') ||
+    (msg.includes('relation') && msg.includes('does not exist'));
+
+  if (isMissing && !warnedMissingTables) {
+    console.warn(
+      '\n⚠️  [Supabase Schema Notice]: Tables not yet created in your Supabase project.' +
+      '\n👉 Please copy and run "backend/migrations/001_initial_schema.sql" in the Supabase SQL Editor.' +
+      '\n🛡️  Falling back gracefully to local persistent storage in the meantime.\n'
+    );
+    warnedMissingTables = true;
+  }
+  return isMissing;
+}
+
 export const db = {
   isSupabase: () => config.supabase.isConfigured && supabase !== null,
 
@@ -58,9 +80,17 @@ export const db = {
   users: {
     async findByEmail(email) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data || null;
+        try {
+          const { data, error } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).single();
+          if (error) {
+            if (error.code === 'PGRST116') return null; // No rows found
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || null;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const data = readLocalDB();
       return data.users.find((u) => u.email.toLowerCase() === email.toLowerCase()) || null;
@@ -68,9 +98,17 @@ export const db = {
 
     async findById(id) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data || null;
+        try {
+          const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+          if (error) {
+            if (error.code === 'PGRST116') return null;
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || null;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const data = readLocalDB();
       return data.users.find((u) => u.id === id) || null;
@@ -88,9 +126,16 @@ export const db = {
       };
 
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('users').insert([newUser]).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
 
       const store = readLocalDB();
@@ -102,9 +147,16 @@ export const db = {
     async update(id, updates) {
       const now = new Date().toISOString();
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('users').update({ ...updates, updated_at: now }).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('users').update({ ...updates, updated_at: now }).eq('id', id).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       const idx = store.users.findIndex((u) => u.id === id);
@@ -129,9 +181,16 @@ export const db = {
       };
 
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('documents').insert([newDoc]).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('documents').insert([newDoc]).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
 
       const store = readLocalDB();
@@ -142,11 +201,19 @@ export const db = {
 
     async findById(id, userId) {
       if (db.isSupabase()) {
-        let query = supabase.from('documents').select('*').eq('id', id);
-        if (userId) query = query.eq('user_id', userId);
-        const { data, error } = await query.single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data || null;
+        try {
+          let query = supabase.from('documents').select('*').eq('id', id);
+          if (userId) query = query.eq('user_id', userId);
+          const { data, error } = await query.single();
+          if (error) {
+            if (error.code === 'PGRST116') return null;
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || null;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       const doc = store.documents.find((d) => d.id === id && (!userId || d.user_id === userId));
@@ -157,16 +224,23 @@ export const db = {
       const { category, status, search, sortBy = 'uploaded_at', sortOrder = 'desc', limit = 50, offset = 0 } = options;
 
       if (db.isSupabase()) {
-        let query = supabase.from('documents').select('*', { count: 'exact' }).eq('user_id', userId);
-        if (category && category !== 'All') query = query.eq('document_type', category);
-        if (status && status !== 'All') query = query.eq('processing_status', status);
-        if (search) query = query.ilike('original_filename', `%${search}%`);
-        query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-        query = query.range(offset, offset + limit - 1);
+        try {
+          let query = supabase.from('documents').select('*', { count: 'exact' }).eq('user_id', userId);
+          if (category && category !== 'All') query = query.eq('document_type', category);
+          if (status && status !== 'All') query = query.eq('processing_status', status);
+          if (search) query = query.ilike('original_filename', `%${search}%`);
+          query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+          query = query.range(offset, offset + limit - 1);
 
-        const { data, count, error } = await query;
-        if (error) throw error;
-        return { documents: data || [], total: count || 0 };
+          const { data, count, error } = await query;
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return { documents: data || [], total: count || 0 };
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
 
       const store = readLocalDB();
@@ -198,9 +272,16 @@ export const db = {
 
     async update(id, updates) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('documents').update(updates).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('documents').update(updates).eq('id', id).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       const idx = store.documents.findIndex((d) => d.id === id);
@@ -212,13 +293,19 @@ export const db = {
 
     async delete(id, userId) {
       if (db.isSupabase()) {
-        const { error } = await supabase.from('documents').delete().eq('id', id).eq('user_id', userId);
-        if (error) throw error;
-        return true;
+        try {
+          const { error } = await supabase.from('documents').delete().eq('id', id).eq('user_id', userId);
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return true;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       store.documents = store.documents.filter((d) => !(d.id === id && d.user_id === userId));
-      // Cascade delete extracted data, line items, validation issues
       const extIds = store.extracted_data.filter((e) => e.document_id === id).map((e) => e.id);
       store.extracted_data = store.extracted_data.filter((e) => e.document_id !== id);
       store.line_items = store.line_items.filter((l) => !extIds.includes(l.extracted_data_id));
@@ -243,12 +330,18 @@ export const db = {
       };
 
       if (db.isSupabase()) {
-        const { data: res, error } = await supabase.from('extracted_data').insert([newExt]).select().single();
-        if (error) throw error;
-        return res;
+        try {
+          const { data: res, error } = await supabase.from('extracted_data').insert([newExt]).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return res;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
-      // Remove any prior extraction for this doc
       store.extracted_data = store.extracted_data.filter((e) => e.document_id !== data.document_id);
       store.extracted_data.push(newExt);
       writeLocalDB(store);
@@ -257,9 +350,17 @@ export const db = {
 
     async findByDocumentId(documentId) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('extracted_data').select('*').eq('document_id', documentId).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data || null;
+        try {
+          const { data, error } = await supabase.from('extracted_data').select('*').eq('document_id', documentId).single();
+          if (error) {
+            if (error.code === 'PGRST116') return null;
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || null;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       return store.extracted_data.find((e) => e.document_id === documentId) || null;
@@ -268,9 +369,16 @@ export const db = {
     async update(id, updates) {
       const now = new Date().toISOString();
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('extracted_data').update({ ...updates, updated_at: now }).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('extracted_data').update({ ...updates, updated_at: now }).eq('id', id).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       const idx = store.extracted_data.findIndex((e) => e.id === id);
@@ -294,9 +402,16 @@ export const db = {
       if (enriched.length === 0) return [];
 
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('line_items').insert(enriched).select();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('line_items').insert(enriched).select();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       store.line_items.push(...enriched);
@@ -306,9 +421,16 @@ export const db = {
 
     async findByExtractedDataId(extractedDataId) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('line_items').select('*').eq('extracted_data_id', extractedDataId);
-        if (error) throw error;
-        return data || [];
+        try {
+          const { data, error } = await supabase.from('line_items').select('*').eq('extracted_data_id', extractedDataId);
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || [];
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       return store.line_items.filter((l) => l.extracted_data_id === extractedDataId);
@@ -316,9 +438,16 @@ export const db = {
 
     async deleteByExtractedDataId(extractedDataId) {
       if (db.isSupabase()) {
-        const { error } = await supabase.from('line_items').delete().eq('extracted_data_id', extractedDataId);
-        if (error) throw error;
-        return true;
+        try {
+          const { error } = await supabase.from('line_items').delete().eq('extracted_data_id', extractedDataId);
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return true;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       store.line_items = store.line_items.filter((l) => l.extracted_data_id !== extractedDataId);
@@ -341,9 +470,16 @@ export const db = {
       if (enriched.length === 0) return [];
 
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('validation_issues').insert(enriched).select();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('validation_issues').insert(enriched).select();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       store.validation_issues.push(...enriched);
@@ -353,9 +489,16 @@ export const db = {
 
     async findByDocumentId(documentId) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('validation_issues').select('*').eq('document_id', documentId);
-        if (error) throw error;
-        return data || [];
+        try {
+          const { data, error } = await supabase.from('validation_issues').select('*').eq('document_id', documentId);
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || [];
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       return store.validation_issues.filter((v) => v.document_id === documentId);
@@ -364,12 +507,19 @@ export const db = {
     async findByUserId(userId, options = {}) {
       const { status, severity } = options;
       if (db.isSupabase()) {
-        let query = supabase.from('validation_issues').select('*, documents(original_filename, document_type)').eq('user_id', userId);
-        if (status) query = query.eq('status', status);
-        if (severity) query = query.eq('severity', severity);
-        const { data, error } = await query;
-        if (error) throw error;
-        return data || [];
+        try {
+          let query = supabase.from('validation_issues').select('*, documents(original_filename, document_type)').eq('user_id', userId);
+          if (status) query = query.eq('status', status);
+          if (severity) query = query.eq('severity', severity);
+          const { data, error } = await query;
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || [];
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       let issues = store.validation_issues.filter((v) => v.user_id === userId);
@@ -388,9 +538,16 @@ export const db = {
 
     async updateStatus(id, status) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('validation_issues').update({ status }).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('validation_issues').update({ status }).eq('id', id).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       const idx = store.validation_issues.findIndex((v) => v.id === id);
@@ -402,9 +559,16 @@ export const db = {
 
     async deleteByDocumentId(documentId) {
       if (db.isSupabase()) {
-        const { error } = await supabase.from('validation_issues').delete().eq('document_id', documentId);
-        if (error) throw error;
-        return true;
+        try {
+          const { error } = await supabase.from('validation_issues').delete().eq('document_id', documentId);
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return true;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       store.validation_issues = store.validation_issues.filter((v) => v.document_id !== documentId);
@@ -424,9 +588,16 @@ export const db = {
       };
 
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('document_matches').insert([match]).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('document_matches').insert([match]).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       store.document_matches.push(match);
@@ -436,9 +607,16 @@ export const db = {
 
     async findByUserId(userId) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('document_matches').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        if (error) throw error;
-        return data || [];
+        try {
+          const { data, error } = await supabase.from('document_matches').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || [];
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       return store.document_matches.filter((m) => m.user_id === userId).reverse();
@@ -446,9 +624,17 @@ export const db = {
 
     async findById(id, userId) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('document_matches').select('*').eq('id', id).eq('user_id', userId).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data || null;
+        try {
+          const { data, error } = await supabase.from('document_matches').select('*').eq('id', id).eq('user_id', userId).single();
+          if (error) {
+            if (error.code === 'PGRST116') return null;
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || null;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       return store.document_matches.find((m) => m.id === id && m.user_id === userId) || null;
@@ -466,9 +652,16 @@ export const db = {
       };
 
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('document_reviews').insert([review]).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('document_reviews').insert([review]).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       store.document_reviews.push(review);
@@ -478,9 +671,16 @@ export const db = {
 
     async findByDocumentId(documentId) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('document_reviews').select('*').eq('document_id', documentId).order('created_at', { ascending: false });
-        if (error) throw error;
-        return data || [];
+        try {
+          const { data, error } = await supabase.from('document_reviews').select('*').eq('document_id', documentId).order('created_at', { ascending: false });
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || [];
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       return store.document_reviews.filter((r) => r.document_id === documentId).reverse();
@@ -498,9 +698,16 @@ export const db = {
       };
 
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('refresh_tokens').insert([token]).select().single();
-        if (error) throw error;
-        return data;
+        try {
+          const { data, error } = await supabase.from('refresh_tokens').insert([token]).select().single();
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       store.refresh_tokens.push(token);
@@ -510,9 +717,17 @@ export const db = {
 
     async findByTokenHash(tokenHash) {
       if (db.isSupabase()) {
-        const { data, error } = await supabase.from('refresh_tokens').select('*').eq('token_hash', tokenHash).is('revoked_at', null).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data || null;
+        try {
+          const { data, error } = await supabase.from('refresh_tokens').select('*').eq('token_hash', tokenHash).is('revoked_at', null).single();
+          if (error) {
+            if (error.code === 'PGRST116') return null;
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return data || null;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       return store.refresh_tokens.find((t) => t.token_hash === tokenHash && !t.revoked_at) || null;
@@ -521,9 +736,16 @@ export const db = {
     async revoke(tokenHash) {
       const now = new Date().toISOString();
       if (db.isSupabase()) {
-        const { error } = await supabase.from('refresh_tokens').update({ revoked_at: now }).eq('token_hash', tokenHash);
-        if (error) throw error;
-        return true;
+        try {
+          const { error } = await supabase.from('refresh_tokens').update({ revoked_at: now }).eq('token_hash', tokenHash);
+          if (error) {
+            if (isTableMissingError(error)) throw error;
+            throw error;
+          }
+          return true;
+        } catch (err) {
+          if (!isTableMissingError(err)) throw err;
+        }
       }
       const store = readLocalDB();
       const token = store.refresh_tokens.find((t) => t.token_hash === tokenHash);
@@ -533,4 +755,3 @@ export const db = {
     },
   },
 };
-
